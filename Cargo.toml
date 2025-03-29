@@ -1,0 +1,13 @@
+[package]
+name = "awsm-env"
+description = "A simple job queue"
+version = "0.0.1"
+edition = "2024"
+homepage = "https://github.com/affanshahid/awsm-env"
+documentation = "https://docs.rs/awsm-env"
+repository = "https://github.com/affanshahid/awsm-env"
+readme = "README.md"
+license = "MIT"
+keywords = ["aws-secrets-manager", "env", "environment_variable"]
+
+[dependencies]
