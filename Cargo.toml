@@ -1,7 +1,7 @@
 [package]
 name = "awsm-env"
-description = "A simple job queue"
-version = "0.0.1"
+description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
+version = "0.0.2"
 edition = "2024"
 homepage = "https://github.com/affanshahid/awsm-env"
 documentation = "https://docs.rs/awsm-env"
