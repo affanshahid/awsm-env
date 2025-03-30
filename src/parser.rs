@@ -8,16 +8,51 @@ use pest_derive::Parser;
 #[grammar = "env.pest"]
 struct EnvParser;
 
+/// Represents a single env entry.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct EnvEntry<'a> {
+pub struct EnvEntry<'a> {
     pub key: &'a str,
     pub default: Option<Cow<'a, str>>,
     pub secret_id: Option<&'a str>,
 }
 
-pub(crate) type EnvEntries<'a> = Vec<EnvEntry<'a>>;
+/// List of [`EnvEntry`]s.
+pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 
-pub(crate) fn parse(input: &str) -> Result<EnvEntries, Error> {
+/// Parses a string representing the contents of
+/// an .env file returning [`EnvEntries`]
+///
+/// # Examples
+///
+/// ```
+/// # use awsm_env::*;
+/// # use std::borrow::Cow;
+///
+/// let input = r#"
+/// ## @aws foobar/123
+/// KEY1=value1
+/// ## @aws barbaz/456
+/// KEY2=value2
+/// "#;
+/// let result = parse(&input);
+///
+/// assert_eq!(
+///     result,
+///     Ok(vec![
+///         EnvEntry {
+///             key: "KEY1",
+///             default: Some(Cow::Borrowed("value1")),
+///             secret_id: Some("foobar/123")
+///         },
+///         EnvEntry {
+///             key: "KEY2",
+///             default: Some(Cow::Borrowed("value2")),
+///               secret_id: Some("barbaz/456")
+///         }
+///     ])
+/// )
+/// ```
+pub fn parse(input: &str) -> Result<EnvEntries, Error> {
     let file = match EnvParser::parse(Rule::file, &input) {
         Ok(mut file) => file.next().expect("should have one file"),
         Err(err) => return Err(Error::ParsingError(err.to_string())),
@@ -86,11 +121,18 @@ pub(crate) fn parse(input: &str) -> Result<EnvEntries, Error> {
                     }
                 });
 
-                entries.push(EnvEntry {
+                let entry = EnvEntry {
                     key: pair_ident,
                     default,
                     secret_id,
-                });
+                };
+
+                if let Some(index) = entries.iter().position(|e: &EnvEntry| e.key == entry.key) {
+                    eprintln!("Warning: Duplicate declaration for {pair_ident}");
+                    entries[index] = entry;
+                } else {
+                    entries.push(entry);
+                }
             }
             Rule::EOI => (),
             _ => unreachable!(),
@@ -389,5 +431,48 @@ mod tests {
         let result = parse(&input);
 
         assert!(result.is_err())
+    }
+
+    #[test]
+    fn test_handles_empty_values() {
+        let input = r#"
+            KEY1=value1
+            KEY2=
+        "#;
+        let result = parse(&input);
+
+        assert_eq!(
+            result,
+            Ok(vec![
+                EnvEntry {
+                    key: "KEY1",
+                    default: Some(Cow::Borrowed("value1")),
+                    secret_id: None
+                },
+                EnvEntry {
+                    key: "KEY2",
+                    default: None,
+                    secret_id: None
+                }
+            ])
+        )
+    }
+
+    #[test]
+    fn test_overrides_duplicate_keys() {
+        let input = r#"
+            KEY1=value1
+            KEY1=overridden
+        "#;
+        let result = parse(&input);
+
+        assert_eq!(
+            result,
+            Ok(vec![EnvEntry {
+                key: "KEY1",
+                default: Some(Cow::Borrowed("overridden")),
+                secret_id: None
+            },])
+        )
     }
 }
