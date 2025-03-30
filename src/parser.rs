@@ -54,7 +54,7 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 /// )
 /// ```
 pub fn parse(input: &str) -> Result<EnvEntries, Error> {
-    let file = match EnvParser::parse(Rule::file, &input) {
+    let file = match EnvParser::parse(Rule::file, input) {
         Ok(mut file) => file.next().expect("should have one file"),
         Err(err) => return Err(Error::ParsingError(err.to_string())),
     };
