@@ -6,6 +6,7 @@ version = 4
 name = "awsm-env"
 version = "0.0.2"
 dependencies = [
+ "cargo-husky",
  "indexmap",
  "pest",
  "pest_derive",
@@ -20,6 +21,12 @@ checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
 ]
+
+[[package]]
+name = "cargo-husky"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b02b629252fe8ef6460461409564e2c21d0c8e77e0944f3d189ff06c4e932ad"
 
 [[package]]
 name = "cfg-if"
