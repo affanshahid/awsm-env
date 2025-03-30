@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use crate::error::Error;
+use indexmap::IndexMap;
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -58,7 +59,7 @@ pub fn parse(input: &str) -> Result<EnvEntries, Error> {
         Err(err) => return Err(Error::ParsingError(err.to_string())),
     };
 
-    let mut entries = Vec::new();
+    let mut entries = IndexMap::new();
 
     for line in file.into_inner() {
         match line.as_rule() {
@@ -127,19 +128,18 @@ pub fn parse(input: &str) -> Result<EnvEntries, Error> {
                     secret_id,
                 };
 
-                if let Some(index) = entries.iter().position(|e: &EnvEntry| e.key == entry.key) {
+                if entries.contains_key(pair_ident) {
                     eprintln!("Warning: Duplicate declaration for {pair_ident}");
-                    entries[index] = entry;
-                } else {
-                    entries.push(entry);
                 }
+
+                entries.insert(pair_ident, entry);
             }
             Rule::EOI => (),
             _ => unreachable!(),
         }
     }
 
-    Ok(entries)
+    Ok(entries.into_values().collect())
 }
 
 #[cfg(test)]
