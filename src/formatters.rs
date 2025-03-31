@@ -11,6 +11,12 @@ pub trait Formatter<'a, I: IntoIterator<Item = OutputEntry<'a>>> {
 /// Formats environment entries into `.env` format using [`EnvOutput::format`]
 pub struct EnvFormatter {}
 
+impl EnvFormatter {
+    pub fn new() -> Self {
+        EnvFormatter {}
+    }
+}
+
 impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for EnvFormatter {
     /// Formats environment entries into `.env` format
     fn format(&self, entries: I) -> String {
@@ -27,6 +33,12 @@ impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for EnvFormat
 /// Formats environment entries into shell variable export commands using [`ShellOutput::format`]
 pub struct ShellFormatter {}
 
+impl ShellFormatter {
+    pub fn new() -> Self {
+        ShellFormatter {}
+    }
+}
+
 impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for ShellFormatter {
     /// Formats environment entries into shell variable export commands
     fn format(&self, entries: I) -> String {
@@ -42,6 +54,12 @@ impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for ShellForm
 
 /// Formats environment entries into JSON using [`JsonOutput::format`]
 pub struct JsonFormatter {}
+
+impl JsonFormatter {
+    pub fn new() -> Self {
+        JsonFormatter {}
+    }
+}
 
 impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for JsonFormatter {
     /// Formats environment entries into JSON of the form `{"KEY": "value"}`
@@ -64,7 +82,7 @@ mod tests {
     fn test_env_output() {
         let input = vec![OutputEntry("KEY1", "value1"), OutputEntry("KEY2", "value2")];
 
-        let formatter = EnvFormatter {};
+        let formatter = EnvFormatter::new();
         let result = formatter.format(input);
         assert_eq!(result, "KEY1=value1\nKEY2=value2\n")
     }
@@ -73,7 +91,7 @@ mod tests {
     fn test_shell_output() {
         let input = vec![OutputEntry("KEY1", "value1"), OutputEntry("KEY2", "value2")];
 
-        let formatter = ShellFormatter {};
+        let formatter = ShellFormatter::new();
         let result = formatter.format(input);
         assert_eq!(result, "export KEY1=value1\nexport KEY2=value2\n")
     }
@@ -82,7 +100,7 @@ mod tests {
     fn test_json_output() {
         let input = vec![OutputEntry("KEY1", "value1"), OutputEntry("KEY2", "value2")];
 
-        let formatter = JsonFormatter {};
+        let formatter = JsonFormatter::new();
         let result = formatter.format(input);
 
         let mut expected = HashMap::new();

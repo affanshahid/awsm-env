@@ -13,7 +13,7 @@ struct EnvParser;
 #[derive(Debug, PartialEq, Eq)]
 pub struct EnvEntry<'a> {
     pub key: &'a str,
-    pub default: Option<Cow<'a, str>>,
+    pub value: Option<Cow<'a, str>>,
     pub secret_id: Option<&'a str>,
 }
 
@@ -42,18 +42,17 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 ///     Ok(vec![
 ///         EnvEntry {
 ///             key: "KEY1",
-///             default: Some(Cow::Borrowed("value1")),
+///             value: Some(Cow::Borrowed("value1")),
 ///             secret_id: Some("foobar/123")
 ///         },
 ///         EnvEntry {
 ///             key: "KEY2",
-///             default: Some(Cow::Borrowed("value2")),
+///             value: Some(Cow::Borrowed("value2")),
 ///               secret_id: Some("barbaz/456")
 ///         }
 ///     ])
 /// )
 /// ```
-#[allow(clippy::result_large_err)]
 pub fn parse(input: &str) -> Result<EnvEntries, Error> {
     let file = EnvParser::parse(Rule::file, input)?
         .next()
@@ -124,7 +123,7 @@ pub fn parse(input: &str) -> Result<EnvEntries, Error> {
 
                 let entry = EnvEntry {
                     key: pair_ident,
-                    default,
+                    value: default,
                     secret_id,
                 };
 
@@ -157,7 +156,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("value1")),
+                value: Some(Cow::Borrowed("value1")),
                 secret_id: None
             }])
         )
@@ -174,7 +173,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("value1")),
+                value: Some(Cow::Borrowed("value1")),
                 secret_id: None
             }])
         )
@@ -193,12 +192,12 @@ mod tests {
             Ok(vec![
                 EnvEntry {
                     key: "KEY1",
-                    default: Some(Cow::Borrowed("value1")),
+                    value: Some(Cow::Borrowed("value1")),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY2",
-                    default: Some(Cow::Borrowed("value2")),
+                    value: Some(Cow::Borrowed("value2")),
                     secret_id: None
                 }
             ])
@@ -216,7 +215,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("value1")),
+                value: Some(Cow::Borrowed("value1")),
                 secret_id: None
             }])
         )
@@ -234,7 +233,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("value1")),
+                value: Some(Cow::Borrowed("value1")),
                 secret_id: Some("foobar/123")
             }])
         )
@@ -256,12 +255,12 @@ mod tests {
             Ok(vec![
                 EnvEntry {
                     key: "KEY1",
-                    default: Some(Cow::Borrowed("value1")),
+                    value: Some(Cow::Borrowed("value1")),
                     secret_id: Some("foobar/123")
                 },
                 EnvEntry {
                     key: "KEY2",
-                    default: Some(Cow::Borrowed("value2")),
+                    value: Some(Cow::Borrowed("value2")),
                     secret_id: Some("barbaz/456")
                 }
             ])
@@ -280,7 +279,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("value1")),
+                value: Some(Cow::Borrowed("value1")),
                 secret_id: Some("foobar/123")
             },])
         )
@@ -299,7 +298,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("value1")),
+                value: Some(Cow::Borrowed("value1")),
                 secret_id: Some("foobar/123")
             }])
         )
@@ -323,12 +322,12 @@ mod tests {
             Ok(vec![
                 EnvEntry {
                     key: "KEY1",
-                    default: Some(Cow::Borrowed("value1")),
+                    value: Some(Cow::Borrowed("value1")),
                     secret_id: Some("foobar/123")
                 },
                 EnvEntry {
                     key: "KEY2",
-                    default: Some(Cow::Borrowed("value2")),
+                    value: Some(Cow::Borrowed("value2")),
                     secret_id: Some("barbaz/456")
                 }
             ])
@@ -350,22 +349,22 @@ mod tests {
             Ok(vec![
                 EnvEntry {
                     key: "KEY1",
-                    default: Some(Cow::Borrowed("value1")),
+                    value: Some(Cow::Borrowed("value1")),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY2",
-                    default: Some(Cow::Borrowed("value2")),
+                    value: Some(Cow::Borrowed("value2")),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY3",
-                    default: Some(Cow::Borrowed("value3")),
+                    value: Some(Cow::Borrowed("value3")),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY4",
-                    default: Some(Cow::Borrowed("value4")),
+                    value: Some(Cow::Borrowed("value4")),
                     secret_id: None
                 }
             ])
@@ -386,17 +385,17 @@ mod tests {
             Ok(vec![
                 EnvEntry {
                     key: "KEY1",
-                    default: Some(Cow::Owned("val\"ue1".to_string())),
+                    value: Some(Cow::Owned("val\"ue1".to_string())),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY2",
-                    default: Some(Cow::Owned("val'ue2".to_string())),
+                    value: Some(Cow::Owned("val'ue2".to_string())),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY3",
-                    default: Some(Cow::Owned("val`ue3".to_string())),
+                    value: Some(Cow::Owned("val`ue3".to_string())),
                     secret_id: None
                 }
             ])
@@ -446,12 +445,12 @@ mod tests {
             Ok(vec![
                 EnvEntry {
                     key: "KEY1",
-                    default: Some(Cow::Borrowed("value1")),
+                    value: Some(Cow::Borrowed("value1")),
                     secret_id: None
                 },
                 EnvEntry {
                     key: "KEY2",
-                    default: None,
+                    value: None,
                     secret_id: None
                 }
             ])
@@ -470,7 +469,7 @@ mod tests {
             result,
             Ok(vec![EnvEntry {
                 key: "KEY1",
-                default: Some(Cow::Borrowed("overridden")),
+                value: Some(Cow::Borrowed("overridden")),
                 secret_id: None
             },])
         )

@@ -8,7 +8,6 @@ use thiserror::Error;
 use crate::parser::Rule;
 
 #[derive(Error, Debug, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[error("Unable to parse input:\n{0}")]
     ParsingError(#[from] pest::error::Error<Rule>),
