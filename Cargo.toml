@@ -10,7 +10,7 @@ repository = "https://github.com/affanshahid/awsm-env"
 readme = "README.md"
 license = "MIT"
 categories = ["command-line-utilities"]
-keywords = ["aws-secrets-manager", "env", "environment-variables"]
+keywords = ["aws-secrets-manager", "env", "environment-variable"]
 
 [dependencies]
 aws-config = { version = "1.6.1", features = ["behavior-version-latest"] }
