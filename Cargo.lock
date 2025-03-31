@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "awsm-env"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",
@@ -486,6 +486,7 @@ dependencies = [
  "itertools 0.14.0",
  "pest",
  "pest_derive",
+ "regex",
  "serde_json",
  "thiserror",
  "tokio",

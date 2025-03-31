@@ -17,6 +17,9 @@ pub enum Error {
 
     #[error("AWS API error: {0}")]
     AwsApiError(#[from] AwsApiError),
+
+    #[error("Placeholder value missing for '{0}'")]
+    PlaceholderMissing(String),
 }
 
 #[derive(Error, Debug)]

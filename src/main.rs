@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::{self, Write},
     path::PathBuf,
 };
@@ -25,18 +26,22 @@ struct Args {
 
     /// Variable definitions of the form `KEY=value` to add or override keys
     /// in the output
-    #[arg(long = "var", value_parser = parse_var)]
+    #[arg(long = "var", short, value_parser = parse_key_val)]
     vars: Option<Vec<(String, String)>>,
+
+    /// Placeholder definitions of the form `KEY=value` to be used in secret names
+    #[arg(long, short, value_parser = parse_key_val)]
+    placeholders: Option<Vec<(String, String)>>,
 }
 
-fn parse_var(s: &str) -> Result<(String, String), String> {
+fn parse_key_val(s: &str) -> Result<(String, String), String> {
     let mut split = s.split("=");
     let key = split
         .next()
-        .ok_or(format!("Variables should be of the form KEY=value"))?;
+        .ok_or(format!("Key value pairs should be of the form key=value"))?;
     let value = split
         .next()
-        .ok_or(format!("Variables should be of the form KEY=value",))?;
+        .ok_or(format!("Key value pairs should be of the form key=value",))?;
 
     Ok((key.to_string(), value.to_owned()))
 }
@@ -58,6 +63,12 @@ async fn main() {
         .into_iter()
         .collect();
 
+    let placeholders: HashMap<String, String> = args
+        .placeholders
+        .unwrap_or(Vec::with_capacity(0))
+        .into_iter()
+        .collect();
+
     let input = match fs::read_to_string(args.spec).await {
         Ok(file) => file,
         Err(err) => {
@@ -74,7 +85,7 @@ async fn main() {
         }
     };
 
-    let output_entries = match process_entries(input_entries, &vars).await {
+    let output_entries = match process_entries(input_entries, &vars, &placeholders).await {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Error fetching secrets: {}", err);
