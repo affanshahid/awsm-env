@@ -1,6 +1,7 @@
 [package]
 name = "awsm-env"
 description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
+authors = ["Affan Shahid <affan.shahid.94@gmail.com>"]
 version = "0.0.2"
 edition = "2024"
 homepage = "https://github.com/affanshahid/awsm-env"
@@ -8,13 +9,19 @@ documentation = "https://docs.rs/awsm-env"
 repository = "https://github.com/affanshahid/awsm-env"
 readme = "README.md"
 license = "MIT"
-keywords = ["aws-secrets-manager", "env", "environment_variable"]
+categories = ["command-line-utilities"]
+keywords = ["aws-secrets-manager", "env", "environment-variables"]
 
 [dependencies]
+aws-config = { version = "1.6.1", features = ["behavior-version-latest"] }
+aws-sdk-secretsmanager = "1.68.0"
 indexmap = "2.8.0"
+itertools = "0.14.0"
 pest = "2.8.0"
 pest_derive = "2.8.0"
+serde_json = "1.0.140"
 thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["full"] }
 
 [dev-dependencies]
 cargo-husky = { version = "1.5.0", default-features = false, features = [

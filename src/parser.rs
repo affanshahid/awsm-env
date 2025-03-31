@@ -53,11 +53,11 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 ///     ])
 /// )
 /// ```
+#[allow(clippy::result_large_err)]
 pub fn parse(input: &str) -> Result<EnvEntries, Error> {
-    let file = match EnvParser::parse(Rule::file, input) {
-        Ok(mut file) => file.next().expect("should have one file"),
-        Err(err) => return Err(Error::ParsingError(err.to_string())),
-    };
+    let file = EnvParser::parse(Rule::file, input)?
+        .next()
+        .expect("should have one file");
 
     let mut entries = IndexMap::new();
 
