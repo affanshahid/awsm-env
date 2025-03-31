@@ -70,7 +70,7 @@ impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for JsonForma
             output.insert(entry.0, entry.1);
         }
 
-        serde_json::to_string(&output).expect("HashMap should be serialized to JSON")
+        serde_json::to_string(&output).expect("HashMap should be serialized to JSON") + "\n"
     }
 }
 

@@ -20,7 +20,7 @@ pub enum Error {
 }
 
 #[derive(Error, Debug)]
-#[error(transparent)]
+#[error("{0:#?}")]
 pub struct AwsSdkError(#[from] SdkError<BatchGetSecretValueError>);
 
 impl PartialEq for AwsSdkError {
@@ -32,7 +32,7 @@ impl PartialEq for AwsSdkError {
 impl Eq for AwsSdkError {}
 
 #[derive(Error, Debug)]
-#[error("{0:?}")]
+#[error("{0:#?}")]
 pub struct AwsApiError(ApiErrorType);
 
 impl PartialEq for AwsApiError {

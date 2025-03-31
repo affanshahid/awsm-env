@@ -21,7 +21,8 @@ pub async fn process_entries<'a>(
     let secrets = fetch_secrets_from_aws(
         entries
             .iter()
-            .filter_map(|e| e.secret_id.as_ref().map(|s| s.to_string())),
+            .filter_map(|e| e.secret_id.as_ref().map(|s| s.to_string()))
+            .collect(),
     )
     .await?;
 
