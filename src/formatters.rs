@@ -23,7 +23,11 @@ impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for EnvFormat
         let mut output = String::new();
 
         for entry in entries {
-            output.push_str(&format!("{}={}\n", entry.0, entry.1));
+            output.push_str(&format!(
+                "{}={}\n",
+                entry.0,
+                serde_json::to_string(entry.1).expect("should be able to JSONify string")
+            ));
         }
 
         output
@@ -45,7 +49,11 @@ impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for ShellForm
         let mut output = String::new();
 
         for entry in entries {
-            output.push_str(&format!("export {}={}\n", entry.0, entry.1));
+            output.push_str(&format!(
+                "export {}={}\n",
+                entry.0,
+                serde_json::to_string(entry.1).expect("should be able to JSONify string")
+            ));
         }
 
         output
@@ -80,25 +88,37 @@ mod tests {
 
     #[test]
     fn test_env_output() {
-        let input = vec![OutputEntry("KEY1", "value1"), OutputEntry("KEY2", "value2")];
+        let input = vec![
+            OutputEntry("KEY1", "value1"),
+            OutputEntry("KEY2", "val\"ue2"),
+        ];
 
         let formatter = EnvFormatter::new();
         let result = formatter.format(input);
-        assert_eq!(result, "KEY1=value1\nKEY2=value2\n")
+        assert_eq!(result, "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n")
     }
 
     #[test]
     fn test_shell_output() {
-        let input = vec![OutputEntry("KEY1", "value1"), OutputEntry("KEY2", "value2")];
+        let input = vec![
+            OutputEntry("KEY1", "value1"),
+            OutputEntry("KEY2", "val\"ue2"),
+        ];
 
         let formatter = ShellFormatter::new();
         let result = formatter.format(input);
-        assert_eq!(result, "export KEY1=value1\nexport KEY2=value2\n")
+        assert_eq!(
+            result,
+            "export KEY1=\"value1\"\nexport KEY2=\"val\\\"ue2\"\n"
+        )
     }
 
     #[test]
     fn test_json_output() {
-        let input = vec![OutputEntry("KEY1", "value1"), OutputEntry("KEY2", "value2")];
+        let input = vec![
+            OutputEntry("KEY1", "value1"),
+            OutputEntry("KEY2", "val\"ue2"),
+        ];
 
         let formatter = JsonFormatter::new();
         let result = formatter.format(input);
@@ -106,7 +126,7 @@ mod tests {
         let mut expected = HashMap::new();
 
         expected.insert("KEY1", "value1");
-        expected.insert("KEY2", "value2");
+        expected.insert("KEY2", "val\"ue2");
 
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&result).unwrap(),
