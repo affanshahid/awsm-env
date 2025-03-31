@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::borrow::Cow;
 
-pub struct OutputEntry<'a>(pub &'a str, pub &'a str);
+use indexmap::IndexMap;
 
 /// By implementing `Formatter` a type provides a way to
-/// format [`OutputEntry`]s
-pub trait Formatter<'a, I: IntoIterator<Item = OutputEntry<'a>>> {
-    fn format(&self, entries: I) -> String;
+/// format an [`IndexMap`] of key value pairs
+pub trait Formatter {
+    fn format(&self, entries: &IndexMap<&str, Cow<str>>) -> String;
 }
 
 /// Formats environment entries into `.env` format using [`EnvOutput::format`]
@@ -17,16 +17,16 @@ impl EnvFormatter {
     }
 }
 
-impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for EnvFormatter {
+impl Formatter for EnvFormatter {
     /// Formats environment entries into `.env` format
-    fn format(&self, entries: I) -> String {
+    fn format(&self, entries: &IndexMap<&str, Cow<str>>) -> String {
         let mut output = String::new();
 
-        for entry in entries {
+        for (key, value) in entries {
             output.push_str(&format!(
                 "{}={}\n",
-                entry.0,
-                serde_json::to_string(entry.1).expect("should be able to JSONify string")
+                key,
+                serde_json::to_string(&value).expect("should be able to JSONify string")
             ));
         }
 
@@ -43,16 +43,16 @@ impl ShellFormatter {
     }
 }
 
-impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for ShellFormatter {
+impl Formatter for ShellFormatter {
     /// Formats environment entries into shell variable export commands
-    fn format(&self, entries: I) -> String {
+    fn format(&self, entries: &IndexMap<&str, Cow<str>>) -> String {
         let mut output = String::new();
 
-        for entry in entries {
+        for (key, value) in entries {
             output.push_str(&format!(
                 "export {}={}\n",
-                entry.0,
-                serde_json::to_string(entry.1).expect("should be able to JSONify string")
+                key,
+                serde_json::to_string(&value).expect("should be able to JSONify string")
             ));
         }
 
@@ -69,16 +69,10 @@ impl JsonFormatter {
     }
 }
 
-impl<'a, I: IntoIterator<Item = OutputEntry<'a>>> Formatter<'a, I> for JsonFormatter {
+impl Formatter for JsonFormatter {
     /// Formats environment entries into JSON of the form `{"KEY": "value"}`
-    fn format(&self, entries: I) -> String {
-        let mut output = HashMap::new();
-
-        for entry in entries {
-            output.insert(entry.0, entry.1);
-        }
-
-        serde_json::to_string(&output).expect("HashMap should be serialized to JSON") + "\n"
+    fn format(&self, entries: &IndexMap<&str, Cow<str>>) -> String {
+        serde_json::to_string(entries).expect("IndexMap should be serialized to JSON") + "\n"
     }
 }
 
@@ -88,25 +82,23 @@ mod tests {
 
     #[test]
     fn test_env_output() {
-        let input = vec![
-            OutputEntry("KEY1", "value1"),
-            OutputEntry("KEY2", "val\"ue2"),
-        ];
+        let mut input = IndexMap::new();
+        input.insert("KEY1", Cow::Owned("value1".to_string()));
+        input.insert("KEY2", Cow::Owned("val\"ue2".to_string()));
 
         let formatter = EnvFormatter::new();
-        let result = formatter.format(input);
+        let result = formatter.format(&input);
         assert_eq!(result, "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n")
     }
 
     #[test]
     fn test_shell_output() {
-        let input = vec![
-            OutputEntry("KEY1", "value1"),
-            OutputEntry("KEY2", "val\"ue2"),
-        ];
+        let mut input = IndexMap::new();
+        input.insert("KEY1", Cow::Owned("value1".to_string()));
+        input.insert("KEY2", Cow::Owned("val\"ue2".to_string()));
 
         let formatter = ShellFormatter::new();
-        let result = formatter.format(input);
+        let result = formatter.format(&input);
         assert_eq!(
             result,
             "export KEY1=\"value1\"\nexport KEY2=\"val\\\"ue2\"\n"
@@ -115,22 +107,16 @@ mod tests {
 
     #[test]
     fn test_json_output() {
-        let input = vec![
-            OutputEntry("KEY1", "value1"),
-            OutputEntry("KEY2", "val\"ue2"),
-        ];
+        let mut input = IndexMap::new();
+        input.insert("KEY1", Cow::Owned("value1".to_string()));
+        input.insert("KEY2", Cow::Owned("val\"ue2".to_string()));
 
         let formatter = JsonFormatter::new();
-        let result = formatter.format(input);
-
-        let mut expected = HashMap::new();
-
-        expected.insert("KEY1", "value1");
-        expected.insert("KEY2", "val\"ue2");
+        let result = formatter.format(&input);
 
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&result).unwrap(),
-            serde_json::to_value(expected).unwrap()
+            serde_json::to_value(input).unwrap()
         )
     }
 }

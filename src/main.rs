@@ -5,19 +5,40 @@ use std::{
 
 use awsm_env::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter, parse, process_entries};
 use clap::{Parser, ValueEnum};
+use indexmap::IndexMap;
 use tokio::fs;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Path to the spec file
     #[arg(default_value = ".env.example")]
     spec: PathBuf,
 
+    /// Output format
     #[arg(long, short, value_enum, default_value = "env")]
     format: Format,
 
+    /// Path of a file to write the output to instead of writing to stdout
     #[arg(long, short)]
     output: Option<PathBuf>,
+
+    /// Variable definitions of the form `KEY=value` to add or override keys
+    /// in the output
+    #[arg(long = "var", value_parser = parse_var)]
+    vars: Option<Vec<(String, String)>>,
+}
+
+fn parse_var(s: &str) -> Result<(String, String), String> {
+    let mut split = s.split("=");
+    let key = split
+        .next()
+        .ok_or(format!("Variables should be of the form KEY=value"))?;
+    let value = split
+        .next()
+        .ok_or(format!("Variables should be of the form KEY=value",))?;
+
+    Ok((key.to_string(), value.to_owned()))
 }
 
 #[derive(Clone, ValueEnum)]
@@ -31,6 +52,12 @@ enum Format {
 async fn main() {
     let args = Args::parse();
 
+    let vars: IndexMap<String, String> = args
+        .vars
+        .unwrap_or(Vec::with_capacity(0))
+        .into_iter()
+        .collect();
+
     let input = match fs::read_to_string(args.spec).await {
         Ok(file) => file,
         Err(err) => {
@@ -39,7 +66,7 @@ async fn main() {
         }
     };
 
-    let mut input_entries = match parse(&input) {
+    let input_entries = match parse(&input) {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Error parsing file: {}", err);
@@ -47,7 +74,7 @@ async fn main() {
         }
     };
 
-    let output_entries = match process_entries(&mut input_entries).await {
+    let output_entries = match process_entries(input_entries, &vars).await {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Error fetching secrets: {}", err);
@@ -56,9 +83,9 @@ async fn main() {
     };
 
     let output = match args.format {
-        Format::Env => EnvFormatter::new().format(output_entries),
-        Format::Shell => ShellFormatter::new().format(output_entries),
-        Format::Json => JsonFormatter::new().format(output_entries),
+        Format::Env => EnvFormatter::new().format(&output_entries),
+        Format::Shell => ShellFormatter::new().format(&output_entries),
+        Format::Json => JsonFormatter::new().format(&output_entries),
     };
 
     let result = match args.output {

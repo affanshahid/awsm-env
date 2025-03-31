@@ -10,14 +10,15 @@ mod providers;
 use std::borrow::Cow;
 
 use error::Error;
-use formatters::OutputEntry;
 pub use formatters::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter};
+use indexmap::IndexMap;
 pub use parser::{EnvEntries, EnvEntry, parse};
 pub use providers::fetch_secrets_from_aws;
 
 pub async fn process_entries<'a>(
-    entries: &'a mut EnvEntries<'a>,
-) -> Result<Vec<OutputEntry<'a>>, Error> {
+    mut entries: EnvEntries<'a>,
+    overrides: &'a IndexMap<String, String>,
+) -> Result<IndexMap<&'a str, Cow<'a, str>>, Error> {
     let secrets = fetch_secrets_from_aws(
         entries
             .iter()
@@ -32,8 +33,16 @@ pub async fn process_entries<'a>(
         .zip(secrets.into_iter())
         .for_each(|(e, s)| e.value = Some(Cow::Owned(s)));
 
-    Ok(entries
-        .iter()
-        .filter_map(|e| e.value.as_ref().map(|v| OutputEntry(e.key, &v)))
-        .collect())
+    let mut result: IndexMap<&str, Cow<str>> = entries
+        .into_iter()
+        .filter_map(|e| e.value.map(|v| (e.key, v)))
+        .collect();
+
+    result.extend(
+        overrides
+            .iter()
+            .map(|(key, value)| (key.as_str(), Cow::Borrowed(value.as_str()))),
+    );
+
+    Ok(result)
 }
