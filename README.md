@@ -35,6 +35,16 @@ Install the `awsm-env` crate using Cargo:
 cargo install awsm-env
 ```
 
+### Pre-built Binaries
+
+Pre-built binaries are available on the [Releases page](https://github.com/affanshahid/awsm-env/releases).
+
+```sh
+curl -L https://github.com/affanshahid/awsm-env/releases/latest/download/awsm-env-x86_64-unknown-linux-gnu -o awsm-env
+chmod +x awsm-env
+sudo mv awsm-env /usr/local/bin/
+```
+
 ## Usage
 
 Ensure AWS credentials are properly configured through:
