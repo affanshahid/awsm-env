@@ -16,6 +16,8 @@ pub use parser::{EnvEntries, EnvEntry, parse};
 pub use providers::fetch_secrets_from_aws;
 use regex::Regex;
 
+/// Returns a map of key value pairs after resolving all secrets
+/// and applying placeholders and overrides.
 pub async fn process_entries<'a>(
     mut entries: EnvEntries<'a>,
     overrides: &'a IndexMap<String, String>,
