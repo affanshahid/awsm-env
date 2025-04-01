@@ -474,4 +474,35 @@ mod tests {
             },])
         )
     }
+
+    #[test]
+    fn test_preserves_spaces_in_quotes() {
+        let input = r#"
+            KEY1="  val  ue  1  "
+            KEY2='  val  ue  2  '
+            KEY3=`  val  ue  3  `
+        "#;
+        let result = parse(&input);
+
+        assert_eq!(
+            result,
+            Ok(vec![
+                EnvEntry {
+                    key: "KEY1",
+                    value: Some(Cow::Borrowed("  val  ue  1  ")),
+                    secret_id: None
+                },
+                EnvEntry {
+                    key: "KEY2",
+                    value: Some(Cow::Borrowed("  val  ue  2  ")),
+                    secret_id: None
+                },
+                EnvEntry {
+                    key: "KEY3",
+                    value: Some(Cow::Borrowed("  val  ue  3  ")),
+                    secret_id: None
+                }
+            ])
+        )
+    }
 }

@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "awsm-env"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",
