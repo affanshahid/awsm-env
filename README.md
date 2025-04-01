@@ -42,7 +42,7 @@ Pre-built binaries are available on the [Releases page](https://github.com/affan
 ```sh
 curl -L https://github.com/affanshahid/awsm-env/releases/latest/download/awsm-env-x86_64-unknown-linux-gnu -o awsm-env
 chmod +x awsm-env
-sudo mv awsm-env /usr/local/bin/
+mv awsm-env /usr/local/bin/
 ```
 
 ## Usage
