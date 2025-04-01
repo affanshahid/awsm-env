@@ -71,7 +71,7 @@ awsm-env --no-defaults
 
 ### Secrets
 
-Specify AWS Secrets Manager sources with comments beginning with `@aws`:
+Specify AWS Secrets Manager sources using comments beginning with `@aws`:
 
 ```sh
 # @aws production/database-url
