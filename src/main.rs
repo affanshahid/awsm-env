@@ -32,6 +32,10 @@ struct Args {
     /// Placeholder definitions of the form `KEY=value` to be used in secret names
     #[arg(long, short, value_parser = parse_key_val)]
     placeholders: Option<Vec<(String, String)>>,
+
+    /// Don't use defaults from the spec file
+    #[arg(long)]
+    no_defaults: bool,
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
@@ -77,13 +81,19 @@ async fn main() {
         }
     };
 
-    let input_entries = match parse(&input) {
+    let mut input_entries = match parse(&input) {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Error parsing file: {}", err);
             return;
         }
     };
+
+    if args.no_defaults {
+        for entry in input_entries.iter_mut() {
+            entry.value = None;
+        }
+    }
 
     let output_entries = match process_entries(input_entries, &vars, &placeholders).await {
         Ok(entries) => entries,
