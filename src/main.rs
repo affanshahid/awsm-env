@@ -30,7 +30,7 @@ struct Args {
     vars: Option<Vec<(String, String)>>,
 
     /// Placeholder definitions of the form `KEY=value` to be used in secret names
-    #[arg(long, short, value_parser = parse_key_val)]
+    #[arg(long = "placeholder", short, value_parser = parse_key_val)]
     placeholders: Option<Vec<(String, String)>>,
 
     /// Don't use defaults from the spec file

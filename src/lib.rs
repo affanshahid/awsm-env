@@ -125,4 +125,16 @@ mod tests {
 
         assert!(result.is_err())
     }
+
+    #[test]
+    fn test_supports_underscores_in_placeholders() {
+        let input = "bar/$baz_1";
+        let mut placeholders = HashMap::new();
+
+        placeholders.insert("baz_1".to_string(), "456".to_string());
+
+        let result = replace_placeholders(input, &placeholders);
+
+        assert_eq!(result, Ok("bar/456".to_string()))
+    }
 }
