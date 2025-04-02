@@ -14,6 +14,3 @@ targets = [
 ]
 install-path = "CARGO_HOME"
 install-updater = false
-
-[dist.dependencies.apt]
-gcc-10 = '*'
