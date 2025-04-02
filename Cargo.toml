@@ -2,7 +2,7 @@
 name = "awsm-env"
 description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
 authors = ["Affan Shahid <affan.shahid.94@gmail.com>"]
-version = "0.0.9"
+version = "0.0.8"
 edition = "2024"
 homepage = "https://github.com/affanshahid/awsm-env"
 documentation = "https://docs.rs/awsm-env"
@@ -31,8 +31,3 @@ cargo-husky = { version = "1.5.0", default-features = false, features = [
     "run-cargo-check",
     "run-cargo-fmt",
 ] }
-
-# The profile that 'dist' will build with
-[profile.dist]
-inherits = "release"
-lto = "thin"
