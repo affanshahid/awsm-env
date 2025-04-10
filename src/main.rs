@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     io::{self, Write},
     path::PathBuf,
+    process::ExitCode,
 };
 
 use awsm_env::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter, parse, process_entries};
@@ -58,7 +59,7 @@ enum Format {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let args = Args::parse();
 
     let vars: IndexMap<String, String> = args
@@ -77,7 +78,7 @@ async fn main() {
         Ok(file) => file,
         Err(err) => {
             eprintln!("Error reading file: {}", err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -85,7 +86,7 @@ async fn main() {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Error parsing file: {}", err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -99,7 +100,7 @@ async fn main() {
         Ok(entries) => entries,
         Err(err) => {
             eprintln!("Error fetching secrets: {}", err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -115,9 +116,10 @@ async fn main() {
     };
 
     match result {
-        Ok(_) => (),
+        Ok(_) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("Error writing output: {}", err);
+            ExitCode::FAILURE
         }
-    };
+    }
 }

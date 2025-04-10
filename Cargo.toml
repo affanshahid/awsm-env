@@ -2,7 +2,7 @@
 name = "awsm-env"
 description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
 authors = ["Affan Shahid <affan.shahid.94@gmail.com>"]
-version = "0.0.8"
+version = "0.0.9"
 edition = "2024"
 homepage = "https://github.com/affanshahid/awsm-env"
 documentation = "https://docs.rs/awsm-env"

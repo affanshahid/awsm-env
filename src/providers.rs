@@ -10,9 +10,17 @@ pub async fn fetch_secrets_from_aws(ids: Vec<String>) -> Result<Vec<String>, Err
     let config = aws_config::load_from_env().await;
     let client = aws_sdk_secretsmanager::Client::new(&config);
 
+    // Create a deduped vector of secret IDs to fetch from AWS
+    let unique_ids: Vec<String> = ids
+        .iter()
+        .cloned()
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
     let mut key_map = HashMap::new();
 
-    for chunk in &ids.clone().into_iter().chunks(20) {
+    for chunk in &unique_ids.into_iter().chunks(20) {
         let secrets = client
             .batch_get_secret_value()
             .set_secret_id_list(Some(chunk.collect()))
@@ -38,12 +46,14 @@ pub async fn fetch_secrets_from_aws(ids: Vec<String>) -> Result<Vec<String>, Err
         );
     }
 
+    // Map back to the original order, including duplicates
     Ok(ids
         .into_iter()
         .map(|s| {
             key_map
-                .remove(&s)
+                .get(&s)
                 .expect("should have a result at this point")
+                .clone()
         })
         .collect())
 }
