@@ -9,12 +9,18 @@ use pest_derive::Parser;
 #[grammar = "env.pest"]
 struct EnvParser;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SecretConfig<'a> {
+    AwsSm(&'a str),
+    AwsPs(&'a str),
+}
+
 /// Represents a single env entry.
 #[derive(Debug, PartialEq, Eq)]
 pub struct EnvEntry<'a> {
     pub key: &'a str,
     pub value: Option<Cow<'a, str>>,
-    pub secret_id: Option<&'a str>,
+    pub secret: Option<SecretConfig<'a>>,
 }
 
 /// List of [`EnvEntry`]s.
@@ -30,9 +36,9 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 /// # use std::borrow::Cow;
 ///
 /// let input = r#"
-/// ## @aws foobar/123
+/// ## @aws-sm foobar/123
 /// KEY1=value1
-/// ## @aws barbaz/456
+/// ## @aws-sm barbaz/456
 /// KEY2=value2
 /// "#;
 /// let result = parse(&input);
@@ -43,12 +49,12 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 ///         EnvEntry {
 ///             key: "KEY1",
 ///             value: Some(Cow::Borrowed("value1")),
-///             secret_id: Some("foobar/123")
+///             secret: Some(SecretConfig::AwsSm("foobar/123"))
 ///         },
 ///         EnvEntry {
 ///             key: "KEY2",
 ///             value: Some(Cow::Borrowed("value2")),
-///               secret_id: Some("barbaz/456")
+///             secret: Some(SecretConfig::AwsSm("barbaz/456"))
 ///         }
 ///     ])
 /// )
@@ -105,18 +111,27 @@ pub fn parse(input: &str) -> Result<EnvEntries, Error> {
                     Some(pair_value)
                 };
 
-                let secret_id = directive.map(|directive| {
+                let secret = directive.map(|directive| {
                     let inner = directive
                         .into_inner()
                         .next()
                         .expect("should have inner directive");
 
                     match inner.as_rule() {
-                        Rule::aws_directive => inner
-                            .into_inner()
-                            .next()
-                            .expect("should have value")
-                            .as_str(),
+                        Rule::aws_sm_directive => SecretConfig::AwsSm(
+                            inner
+                                .into_inner()
+                                .next()
+                                .expect("should have value")
+                                .as_str(),
+                        ),
+                        Rule::aws_ps_directive => SecretConfig::AwsPs(
+                            inner
+                                .into_inner()
+                                .next()
+                                .expect("should have value")
+                                .as_str(),
+                        ),
                         _ => unreachable!(),
                     }
                 });
@@ -124,7 +139,7 @@ pub fn parse(input: &str) -> Result<EnvEntries, Error> {
                 let entry = EnvEntry {
                     key: pair_ident,
                     value: default,
-                    secret_id,
+                    secret,
                 };
 
                 if entries.contains_key(pair_ident) {
@@ -157,7 +172,7 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret_id: None
+                secret: None
             }])
         )
     }
@@ -174,7 +189,7 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret_id: None
+                secret: None
             }])
         )
     }
@@ -193,12 +208,12 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("value2")),
-                    secret_id: None
+                    secret: None
                 }
             ])
         )
@@ -216,15 +231,15 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret_id: None
+                secret: None
             }])
         )
     }
 
     #[test]
-    fn test_parses_aws_directive() {
+    fn test_parses_aws_sm_directive() {
         let input = r#"
-            # @aws foobar/123
+            # @aws-sm foobar/123
             KEY1=value1
         "#;
         let result = parse(&input);
@@ -234,18 +249,36 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret_id: Some("foobar/123")
+                secret: Some(SecretConfig::AwsSm("foobar/123"))
             }])
         )
     }
 
     #[test]
-    fn test_parses_multiple_aws_directive() {
+    fn test_parses_aws_ps_directive() {
         let input = r#"
-            # @aws foobar/123
+            # @aws-ps foobar/123
+            KEY1=value1
+        "#;
+        let result = parse(&input);
+
+        assert_eq!(
+            result,
+            Ok(vec![EnvEntry {
+                key: "KEY1",
+                value: Some(Cow::Borrowed("value1")),
+                secret: Some(SecretConfig::AwsPs("foobar/123"))
+            }])
+        )
+    }
+
+    #[test]
+    fn test_parses_multiple_directives() {
+        let input = r#"
+            # @aws-sm foobar/123
             KEY1=value1
 
-            # @aws barbaz/456
+            # @aws-sm barbaz/456
             KEY2=value2
         "#;
         let result = parse(&input);
@@ -256,12 +289,12 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret_id: Some("foobar/123")
+                    secret: Some(SecretConfig::AwsSm("foobar/123"))
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("value2")),
-                    secret_id: Some("barbaz/456")
+                    secret: Some(SecretConfig::AwsSm("barbaz/456"))
                 }
             ])
         )
@@ -270,7 +303,7 @@ mod tests {
     #[test]
     fn test_handles_spacing() {
         let input = r#"
-            #    @aws     foobar/123
+            #    @aws-sm     foobar/123
             KEY1 =   value1
         "#;
         let result = parse(&input);
@@ -280,7 +313,7 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret_id: Some("foobar/123")
+                secret: Some(SecretConfig::AwsSm("foobar/123"))
             },])
         )
     }
@@ -288,7 +321,7 @@ mod tests {
     #[test]
     fn test_ignores_comments_after_directive() {
         let input = r#"
-            # @aws foobar/123
+            # @aws-sm foobar/123
             # test
             KEY1=value1
         "#;
@@ -299,7 +332,7 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret_id: Some("foobar/123")
+                secret: Some(SecretConfig::AwsSm("foobar/123"))
             }])
         )
     }
@@ -308,10 +341,10 @@ mod tests {
     fn test_ignores_comments_between_entries() {
         let input = r#"
             #test
-            # @aws foobar/123
+            # @aws-sm foobar/123
             KEY1=value1
             # test
-            # @aws barbaz/456
+            # @aws-sm barbaz/456
             KEY2=value2
             # test
         "#;
@@ -323,12 +356,12 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret_id: Some("foobar/123")
+                    secret: Some(SecretConfig::AwsSm("foobar/123"))
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("value2")),
-                    secret_id: Some("barbaz/456")
+                    secret: Some(SecretConfig::AwsSm("barbaz/456"))
                 }
             ])
         )
@@ -350,22 +383,22 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("value2")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY3",
                     value: Some(Cow::Borrowed("value3")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY4",
                     value: Some(Cow::Borrowed("value4")),
-                    secret_id: None
+                    secret: None
                 }
             ])
         )
@@ -386,17 +419,17 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Owned("val\"ue1".to_string())),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Owned("val'ue2".to_string())),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY3",
                     value: Some(Cow::Owned("val`ue3".to_string())),
-                    secret_id: None
+                    secret: None
                 }
             ])
         )
@@ -446,12 +479,12 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: None,
-                    secret_id: None
+                    secret: None
                 }
             ])
         )
@@ -470,7 +503,7 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("overridden")),
-                secret_id: None
+                secret: None
             },])
         )
     }
@@ -490,17 +523,17 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("  val  ue  1  ")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("  val  ue  2  ")),
-                    secret_id: None
+                    secret: None
                 },
                 EnvEntry {
                     key: "KEY3",
                     value: Some(Cow::Borrowed("  val  ue  3  ")),
-                    secret_id: None
+                    secret: None
                 }
             ])
         )

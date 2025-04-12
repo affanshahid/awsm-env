@@ -12,8 +12,8 @@ use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 use error::Error;
 pub use formatters::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter};
 use indexmap::IndexMap;
-pub use parser::{EnvEntries, EnvEntry, parse};
-pub use providers::fetch_secrets_from_aws;
+pub use parser::{EnvEntries, EnvEntry, SecretConfig, parse};
+use providers::{ParameterStoreProvider, Provider, SecretsManagerProvider};
 use regex::Regex;
 
 /// Returns a map of key value pairs after resolving all secrets
@@ -21,27 +21,46 @@ use regex::Regex;
 pub async fn process_entries<'a>(
     mut entries: EnvEntries<'a>,
     overrides: &'a IndexMap<String, String>,
-    placeholders: &HashMap<String, String>,
+    placeholders: &'a HashMap<String, String>,
 ) -> Result<IndexMap<&'a str, Cow<'a, str>>, Error> {
-    let secrets = fetch_secrets_from_aws(
-        entries
-            .iter()
-            .filter_map(|e| {
-                e.secret_id
-                    .as_ref()
-                    .map(|s| replace_placeholders(s, placeholders))
-            })
-            .collect::<Result<Vec<String>, Error>>()?,
-    )
-    .await?;
+    let mut sm_entries = vec![];
+    let mut ps_entries = vec![];
 
-    entries
-        .iter_mut()
-        .filter(|e| e.secret_id.is_some())
-        .zip(secrets.into_iter())
-        .for_each(|(e, s)| e.value = Some(Cow::Owned(s)));
+    for (i, entry) in entries.iter().enumerate() {
+        match entry.secret {
+            Some(SecretConfig::AwsSm(id)) => {
+                sm_entries.push((i, replace_placeholders(id, placeholders)?));
+            }
+            Some(SecretConfig::AwsPs(id)) => {
+                ps_entries.push((i, replace_placeholders(id, placeholders)?));
+            }
+            None => {}
+        }
+    }
 
-    let mut result: IndexMap<&str, Cow<str>> = entries
+    if !sm_entries.is_empty() {
+        let provider = SecretsManagerProvider::new().await;
+        let secrets = provider
+            .provide_secrets(sm_entries.iter().map(|(_, id)| id.clone()).collect())
+            .await?;
+
+        for ((i, _), secret) in sm_entries.into_iter().zip(secrets) {
+            entries[i].value = Some(Cow::Owned(secret));
+        }
+    }
+
+    if !ps_entries.is_empty() {
+        let provider = ParameterStoreProvider::new().await;
+        let secrets = provider
+            .provide_secrets(ps_entries.iter().map(|(_, id)| id.clone()).collect())
+            .await?;
+
+        for ((i, _), secret) in ps_entries.into_iter().zip(secrets) {
+            entries[i].value = Some(Cow::Owned(secret));
+        }
+    }
+
+    let mut result: IndexMap<&'a str, Cow<'a, str>> = entries
         .into_iter()
         .filter_map(|e| e.value.map(|v| (e.key, v)))
         .collect();
@@ -67,7 +86,7 @@ fn replace_placeholders(id: &str, placeholders: &HashMap<String, String>) -> Res
     let mut output = re.replace_all(&output, |caps: &regex::Captures| {
         let name = caps
             .get(1)
-            .expect("a regex match should contain a capture")
+            .expect("a match should contain a capture")
             .as_str();
 
         match placeholders.get(name) {
