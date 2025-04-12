@@ -172,7 +172,7 @@ By default, `awsm-env` preserves default values from the source file. Disable th
 
 The following providers are supported:
 
-| Name                       | Description         |
+| Directive                  | Provider            |
 | -------------------------- | ------------------- |
 | `@aws-sm <secret_name>`    | AWS Secrets Manager |
 | `@aws-ps <parameter_name>` | AWS Parameter Store |
