@@ -1,16 +1,16 @@
 # Awsm Env
 
-A lightweight utility for syncing AWS Secrets Manager secrets to environment variables.
+A lightweight utility for syncing secrets from AWS to environment variables.
 
 Go from an `.env.example` file like this:
 
 ```sh
 # This directive loads the value from a secret named 'production/database-url'
-# @aws production/database-url
+# @aws-sm production/database-url
 DATABASE_URL=
 
 # Use placeholders with `$`
-# @aws $environment/api/secret
+# @aws-sm $environment/api/secret
 API_SECRET=
 
 # Default values are preserved when no directive is present
@@ -81,10 +81,10 @@ awsm-env --no-defaults
 
 ### Secrets
 
-Specify AWS Secrets Manager sources using comments beginning with `@aws`:
+Specify AWS Secrets Manager sources using comments beginning with `@aws-sm`:
 
 ```sh
-# @aws production/database-url
+# @aws-sm production/database-url
 DATABASE_URL=
 ```
 
@@ -93,7 +93,7 @@ DATABASE_URL=
 Use placeholders to manage multiple environments:
 
 ```sh
-# @aws $environment/database-url
+# @aws-sm $environment/database-url
 DATABASE_URL=
 ```
 
@@ -123,10 +123,10 @@ Override or add values directly with the `--var` flag.
 If you have an `.env.example` file like this:
 
 ```sh
-# @aws production/database-url
+# @aws-sm production/database-url
 DATABASE_URL=
 
-# @aws production/api/secret
+# @aws-sm production/api/secret
 API_SECRET=
 
 PORT=3000
@@ -167,6 +167,15 @@ Choose from multiple output formats with the `-f` flag:
 ### Defaults
 
 By default, `awsm-env` preserves default values from the source file. Disable this behavior with `--no-defaults` to only include values from AWS or overrides.
+
+## Providers
+
+The following providers are supported:
+
+| Name                       | Description         |
+| -------------------------- | ------------------- |
+| `@aws-sm <secret_name>`    | AWS Secrets Manager |
+| `@aws-ps <parameter_name>` | AWS Parameter Store |
 
 ## Contributing
 
