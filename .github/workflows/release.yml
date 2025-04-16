@@ -57,12 +57,12 @@ jobs:
           ENV DEBIAN_FRONTEND=noninteractive
           ENV AWS_LC_SYS_CMAKE_BUILDER=1
 
-          RUN apt-get update && apt-get install -y
-              curl
-              build-essential
-              git
-              pkg-config
-              libssl-dev
+          RUN apt-get update && apt-get install -y \
+              curl \
+              build-essential \
+              git \
+              pkg-config \
+              libssl-dev \
               cmake
 
           RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
@@ -83,14 +83,14 @@ jobs:
           ENV DEBIAN_FRONTEND=noninteractive
           ENV AWS_LC_SYS_CMAKE_BUILDER=1
 
-          RUN apt-get update && apt-get install -y
-              curl
-              build-essential
-              git
-              pkg-config
-              libssl-dev
-              cmake
-              gcc-aarch64-linux-gnu
+          RUN apt-get update && apt-get install -y \
+              curl \
+              build-essential \
+              git \
+              pkg-config \
+              libssl-dev \
+              cmake \
+              gcc-aarch64-linux-gnu \
               g++-aarch64-linux-gnu
 
           RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
@@ -102,8 +102,8 @@ jobs:
           COPY . .
 
           # Configure Cargo for cross compilation
-          RUN mkdir -p .cargo &&
-              echo '[target.aarch64-unknown-linux-gnu]' > .cargo/config &&
+          RUN mkdir -p .cargo && \
+              echo '[target.aarch64-unknown-linux-gnu]' > .cargo/config && \
               echo 'linker = "aarch64-linux-gnu-gcc"' >> .cargo/config
 
           RUN cargo build --release --target aarch64-unknown-linux-gnu
