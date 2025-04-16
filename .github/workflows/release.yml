@@ -13,49 +13,127 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: target/x86_64-unknown-linux-gnu/release/awsm-env
             asset_name: awsm-env-x86_64-unknown-linux-gnu
-          - os: ubuntu-20.04
+            use_docker: true
+            docker_file: Dockerfile.x86_64
+          - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact_name: target/aarch64-unknown-linux-gnu/release/awsm-env
             asset_name: awsm-env-aarch64-unknown-linux-gnu
+            use_docker: true
+            docker_file: Dockerfile.aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: target/x86_64-pc-windows-msvc/release/awsm-env.exe
             asset_name: awsm-env-x86_64-pc-windows-msvc.exe
+            use_docker: false
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: target/x86_64-apple-darwin/release/awsm-env
             asset_name: awsm-env-x86_64-apple-darwin
+            use_docker: false
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: target/aarch64-apple-darwin/release/awsm-env
             asset_name: awsm-env-aarch64-apple-darwin
+            use_docker: false
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        if: matrix.use_docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create Docker build files for x86_64
+        if: matrix.use_docker && matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          cat > Dockerfile.x86_64 << 'EOF'
+          FROM ubuntu:20.04
+
+          ENV DEBIAN_FRONTEND=noninteractive
+          ENV AWS_LC_SYS_CMAKE_BUILDER=1
+
+          RUN apt-get update && apt-get install -y
+              curl
+              build-essential
+              git
+              pkg-config
+              libssl-dev
+              cmake
+
+          RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          ENV PATH="/root/.cargo/bin:${PATH}"
+
+          WORKDIR /app
+          COPY . .
+
+          RUN cargo build --release --target x86_64-unknown-linux-gnu
+          EOF
+
+      - name: Create Docker build files for aarch64
+        if: matrix.use_docker && matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          cat > Dockerfile.aarch64 << 'EOF'
+          FROM ubuntu:20.04
+
+          ENV DEBIAN_FRONTEND=noninteractive
+          ENV AWS_LC_SYS_CMAKE_BUILDER=1
+
+          RUN apt-get update && apt-get install -y
+              curl
+              build-essential
+              git
+              pkg-config
+              libssl-dev
+              cmake
+              gcc-aarch64-linux-gnu
+              g++-aarch64-linux-gnu
+
+          RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          ENV PATH="/root/.cargo/bin:${PATH}"
+
+          RUN rustup target add aarch64-unknown-linux-gnu
+
+          WORKDIR /app
+          COPY . .
+
+          # Configure Cargo for cross compilation
+          RUN mkdir -p .cargo &&
+              echo '[target.aarch64-unknown-linux-gnu]' > .cargo/config &&
+              echo 'linker = "aarch64-linux-gnu-gcc"' >> .cargo/config
+
+          RUN cargo build --release --target aarch64-unknown-linux-gnu
+          EOF
+
+      - name: Build with Docker
+        if: matrix.use_docker
+        run: |
+          docker build -f ${{ matrix.docker_file }} -t awsm-env-builder:${{ matrix.target }} .
+
+          # Extract the built binary from the container
+          CONTAINER_ID=$(docker create awsm-env-builder:${{ matrix.target }})
+          mkdir -p $(dirname ${{ matrix.artifact_name }})
+          docker cp $CONTAINER_ID:/app/${{ matrix.artifact_name }} ${{ matrix.artifact_name }}
+          docker rm $CONTAINER_ID
+
       - name: Install Rust
+        if: ${{ !matrix.use_docker }}
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
 
-      - name: Install cross-compilation tools
-        if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Build binary
+      - name: Build binary (non-Docker)
+        if: ${{ !matrix.use_docker }}
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --target ${{ matrix.target }}
-          use-cross: ${{ contains(matrix.target, 'aarch64-unknown-linux-gnu') }}
         env:
           AWS_LC_SYS_CMAKE_BUILDER: 1
 
