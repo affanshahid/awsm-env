@@ -100,7 +100,7 @@ impl Provider for ParameterStoreProvider {
 
         let mut key_map = HashMap::new();
 
-        for chunk in &deduped.chunks(20) {
+        for chunk in &deduped.chunks(10) {
             let resp = self
                 .client
                 .get_parameters()
