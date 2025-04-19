@@ -8,7 +8,10 @@ use crate::error::{AwsPsSdkError, AwsSmApiError, AwsSmSdkError, Error};
 pub trait Provider {
     type Config;
 
-    async fn provide_secrets(&self, ids: Vec<Self::Config>) -> Result<Vec<String>, Error>;
+    async fn try_provide_secrets(
+        &self,
+        ids: Vec<Self::Config>,
+    ) -> Result<Vec<Option<String>>, Error>;
 }
 
 /// Fetches secrets from AWS Secrets Manager
@@ -29,7 +32,10 @@ impl Provider for SecretsManagerProvider {
     type Config = String;
 
     // All the expects are because the AWS SDK isn't idiomatic
-    async fn provide_secrets(&self, ids: Vec<Self::Config>) -> Result<Vec<String>, Error> {
+    async fn try_provide_secrets(
+        &self,
+        ids: Vec<Self::Config>,
+    ) -> Result<Vec<Option<String>>, Error> {
         // Create a deduped vector of secret IDs to fetch from AWS
         let unique_ids: Vec<String> = ids
             .iter()
@@ -49,14 +55,19 @@ impl Provider for SecretsManagerProvider {
                 .await
                 .map_err(AwsSmSdkError::from)?;
 
-            if let Some(error) = secrets.errors.and_then(|errors| errors.into_iter().next()) {
+            if let Some(error) = secrets.errors.and_then(|errors| {
+                errors
+                    .into_iter()
+                    .filter(|e| e.error_code() != Some("ResourceNotFoundException"))
+                    .next()
+            }) {
                 return Err(AwsSmApiError::from(error).into());
             };
 
             key_map.extend(
                 secrets
                     .secret_values
-                    .expect("should have secrets if there were no errors")
+                    .expect("should have secrets if there were no ResourceNotFound errors")
                     .into_iter()
                     .map(|s| {
                         (
@@ -67,15 +78,7 @@ impl Provider for SecretsManagerProvider {
             );
         }
 
-        Ok(ids
-            .into_iter()
-            .map(|s| {
-                key_map
-                    .get(&s)
-                    .expect("should have a result at this point")
-                    .clone()
-            })
-            .collect())
+        Ok(ids.into_iter().map(|s| key_map.get(&s).cloned()).collect())
     }
 }
 
@@ -95,7 +98,7 @@ impl ParameterStoreProvider {
 impl Provider for ParameterStoreProvider {
     type Config = String;
 
-    async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<String>, Error> {
+    async fn try_provide_secrets(&self, ids: Vec<String>) -> Result<Vec<Option<String>>, Error> {
         let deduped = ids.clone().into_iter().collect::<HashSet<_>>().into_iter();
 
         let mut key_map = HashMap::new();
@@ -110,10 +113,6 @@ impl Provider for ParameterStoreProvider {
                 .await
                 .map_err(|err| AwsPsSdkError::from(err))?;
 
-            if let Some(invalid) = resp.invalid_parameters.and_then(|p| p.into_iter().next()) {
-                return Err(Error::ParameterNotFound(invalid));
-            }
-
             for param in resp
                 .parameters
                 .expect("should have parameters at this point")
@@ -125,14 +124,6 @@ impl Provider for ParameterStoreProvider {
             }
         }
 
-        Ok(ids
-            .into_iter()
-            .map(|s| {
-                key_map
-                    .get(&s)
-                    .expect("should have a result at this point")
-                    .clone()
-            })
-            .collect())
+        Ok(ids.into_iter().map(|s| key_map.get(&s).cloned()).collect())
     }
 }

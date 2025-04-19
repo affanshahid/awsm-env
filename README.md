@@ -86,6 +86,10 @@ Specify AWS Secrets Manager sources using comments beginning with `@aws-sm`:
 ```sh
 # @aws-sm production/database-url
 DATABASE_URL=
+
+# Parameters with @optional will be ignored if not found
+# @aws-sm production/missing-parameter @optional
+SOME_OPTIONAL_PARAM=
 ```
 
 ### Placeholders

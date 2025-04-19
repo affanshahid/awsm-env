@@ -10,9 +10,15 @@ use pest_derive::Parser;
 struct EnvParser;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum SecretConfig<'a> {
+pub enum SecretProviderConfig<'a> {
     AwsSm(&'a str),
     AwsPs(&'a str),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SecretConfig<'a> {
+    pub required: bool,
+    pub provider_config: SecretProviderConfig<'a>,
 }
 
 /// Represents a single env entry.
@@ -49,12 +55,18 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 ///         EnvEntry {
 ///             key: "KEY1",
 ///             value: Some(Cow::Borrowed("value1")),
-///             secret: Some(SecretConfig::AwsSm("foobar/123"))
+///             secret: Some(SecretConfig {
+///                 required: true,
+///                 provider_config: SecretProviderConfig::AwsSm("foobar/123")
+///             })
 ///         },
 ///         EnvEntry {
 ///             key: "KEY2",
 ///             value: Some(Cow::Borrowed("value2")),
-///             secret: Some(SecretConfig::AwsSm("barbaz/456"))
+///             secret: Some(SecretConfig {
+///                 required: true,
+///                 provider_config: SecretProviderConfig::AwsSm("barbaz/456")
+///             })
 ///         }
 ///     ])
 /// )
@@ -112,27 +124,32 @@ pub fn parse(input: &str) -> Result<EnvEntries, Error> {
                 };
 
                 let secret = directive.map(|directive| {
-                    let inner = directive
-                        .into_inner()
-                        .next()
-                        .expect("should have inner directive");
+                    let mut pairs = directive.into_inner();
+                    let inner_directive = pairs.next().expect("should have inner directive");
 
-                    match inner.as_rule() {
-                        Rule::aws_sm_directive => SecretConfig::AwsSm(
-                            inner
+                    let config = match inner_directive.as_rule() {
+                        Rule::aws_sm_directive => SecretProviderConfig::AwsSm(
+                            inner_directive
                                 .into_inner()
                                 .next()
                                 .expect("should have value")
                                 .as_str(),
                         ),
-                        Rule::aws_ps_directive => SecretConfig::AwsPs(
-                            inner
+                        Rule::aws_ps_directive => SecretProviderConfig::AwsPs(
+                            inner_directive
                                 .into_inner()
                                 .next()
                                 .expect("should have value")
                                 .as_str(),
                         ),
                         _ => unreachable!(),
+                    };
+
+                    let optional_indicator = pairs.next();
+
+                    SecretConfig {
+                        required: optional_indicator.is_none(),
+                        provider_config: config,
                     }
                 });
 
@@ -249,7 +266,10 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig::AwsSm("foobar/123"))
+                secret: Some(SecretConfig {
+                    required: true,
+                    provider_config: SecretProviderConfig::AwsSm("foobar/123")
+                })
             }])
         )
     }
@@ -267,7 +287,31 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig::AwsPs("foobar/123"))
+                secret: Some(SecretConfig {
+                    required: true,
+                    provider_config: SecretProviderConfig::AwsPs("foobar/123")
+                })
+            }])
+        )
+    }
+
+    #[test]
+    fn test_parses_optional_directive() {
+        let input = r#"
+            # @aws-ps foobar/123 @optional
+            KEY1=value1
+        "#;
+        let result = parse(&input);
+
+        assert_eq!(
+            result,
+            Ok(vec![EnvEntry {
+                key: "KEY1",
+                value: Some(Cow::Borrowed("value1")),
+                secret: Some(SecretConfig {
+                    required: false,
+                    provider_config: SecretProviderConfig::AwsPs("foobar/123")
+                })
             }])
         )
     }
@@ -289,12 +333,18 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret: Some(SecretConfig::AwsSm("foobar/123"))
+                    secret: Some(SecretConfig {
+                        required: true,
+                        provider_config: SecretProviderConfig::AwsSm("foobar/123")
+                    })
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("value2")),
-                    secret: Some(SecretConfig::AwsSm("barbaz/456"))
+                    secret: Some(SecretConfig {
+                        required: true,
+                        provider_config: SecretProviderConfig::AwsSm("barbaz/456")
+                    })
                 }
             ])
         )
@@ -313,7 +363,10 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig::AwsSm("foobar/123"))
+                secret: Some(SecretConfig {
+                    required: true,
+                    provider_config: SecretProviderConfig::AwsSm("foobar/123")
+                })
             },])
         )
     }
@@ -332,7 +385,10 @@ mod tests {
             Ok(vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig::AwsSm("foobar/123"))
+                secret: Some(SecretConfig {
+                    required: true,
+                    provider_config: SecretProviderConfig::AwsSm("foobar/123")
+                })
             }])
         )
     }
@@ -356,12 +412,18 @@ mod tests {
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
-                    secret: Some(SecretConfig::AwsSm("foobar/123"))
+                    secret: Some(SecretConfig {
+                        required: true,
+                        provider_config: SecretProviderConfig::AwsSm("foobar/123")
+                    })
                 },
                 EnvEntry {
                     key: "KEY2",
                     value: Some(Cow::Borrowed("value2")),
-                    secret: Some(SecretConfig::AwsSm("barbaz/456"))
+                    secret: Some(SecretConfig {
+                        required: true,
+                        provider_config: SecretProviderConfig::AwsSm("barbaz/456")
+                    })
                 }
             ])
         )

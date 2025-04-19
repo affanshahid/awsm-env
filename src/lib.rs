@@ -12,7 +12,7 @@ use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 use error::Error;
 pub use formatters::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter};
 use indexmap::IndexMap;
-pub use parser::{EnvEntries, EnvEntry, SecretConfig, parse};
+pub use parser::{EnvEntries, EnvEntry, SecretConfig, SecretProviderConfig, parse};
 use providers::{ParameterStoreProvider, Provider, SecretsManagerProvider};
 use regex::Regex;
 
@@ -28,10 +28,16 @@ pub async fn process_entries<'a>(
 
     for (i, entry) in entries.iter().enumerate() {
         match entry.secret {
-            Some(SecretConfig::AwsSm(id)) => {
+            Some(SecretConfig {
+                provider_config: SecretProviderConfig::AwsSm(id),
+                ..
+            }) => {
                 sm_entries.push((i, replace_placeholders(id, placeholders)?));
             }
-            Some(SecretConfig::AwsPs(id)) => {
+            Some(SecretConfig {
+                provider_config: SecretProviderConfig::AwsPs(id),
+                ..
+            }) => {
                 ps_entries.push((i, replace_placeholders(id, placeholders)?));
             }
             None => {}
@@ -41,22 +47,36 @@ pub async fn process_entries<'a>(
     if !sm_entries.is_empty() {
         let provider = SecretsManagerProvider::new().await;
         let secrets = provider
-            .provide_secrets(sm_entries.iter().map(|(_, id)| id.clone()).collect())
+            .try_provide_secrets(sm_entries.iter().map(|(_, id)| id.clone()).collect())
             .await?;
 
-        for ((i, _), secret) in sm_entries.into_iter().zip(secrets) {
-            entries[i].value = Some(Cow::Owned(secret));
+        for ((i, id), secret) in sm_entries.into_iter().zip(secrets) {
+            match (secret, &entries[i].secret) {
+                (_, None) => unreachable!(),
+                (Some(secret), _) => entries[i].value = Some(Cow::Owned(secret)),
+                (None, Some(SecretConfig { required: true, .. })) => {
+                    return Err(Error::ParameterNotFound(id));
+                }
+                _ => {}
+            };
         }
     }
 
     if !ps_entries.is_empty() {
         let provider = ParameterStoreProvider::new().await;
         let secrets = provider
-            .provide_secrets(ps_entries.iter().map(|(_, id)| id.clone()).collect())
+            .try_provide_secrets(ps_entries.iter().map(|(_, id)| id.clone()).collect())
             .await?;
 
-        for ((i, _), secret) in ps_entries.into_iter().zip(secrets) {
-            entries[i].value = Some(Cow::Owned(secret));
+        for ((i, id), secret) in ps_entries.into_iter().zip(secrets) {
+            match (secret, &entries[i].secret) {
+                (_, None) => unreachable!(),
+                (Some(secret), _) => entries[i].value = Some(Cow::Owned(secret)),
+                (None, Some(SecretConfig { required: true, .. })) => {
+                    return Err(Error::ParameterNotFound(id));
+                }
+                _ => {}
+            };
         }
     }
 
