@@ -9,6 +9,7 @@ use aws_sdk_ssm::{
 };
 
 use thiserror::Error;
+use tokio::io;
 
 use crate::parser::Rule;
 
@@ -31,6 +32,12 @@ pub enum Error {
 
     #[error("Parameter not found: {0}")]
     ParameterNotFound(String),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] IoError),
+
+    #[error("Serialization / Deserialization error: {0}")]
+    SerdeError(#[from] SerdeError),
 }
 
 #[derive(Error, Debug)]
@@ -74,3 +81,27 @@ impl PartialEq for AwsPsSdkError {
 }
 
 impl Eq for AwsPsSdkError {}
+
+#[derive(Error, Debug)]
+#[error("{0:#?}")]
+pub struct IoError(#[from] io::Error);
+
+impl PartialEq for IoError {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for IoError {}
+
+#[derive(Error, Debug)]
+#[error("{0:#?}")]
+pub struct SerdeError(#[from] serde_json::Error);
+
+impl PartialEq for SerdeError {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for SerdeError {}

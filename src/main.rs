@@ -1,14 +1,17 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     io::{self, Write},
     path::PathBuf,
     process::ExitCode,
 };
 
-use awsm_env::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter, parse, process_entries};
+use awsm_env::{
+    EnvOutput, JsonOutput, MergeMode, Output, ShellOutput, merge, parse, process_entries,
+};
 use clap::{Parser, ValueEnum};
 use indexmap::IndexMap;
-use tokio::fs;
+use tokio::fs::{self, File};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -37,6 +40,10 @@ struct Args {
     /// Don't use defaults from the spec file
     #[arg(long)]
     no_defaults: bool,
+
+    /// Merge mode to use when merging with existing output file. Defaults to `overwrite`.
+    #[arg(long, short, value_enum, default_value_t = MergeMode::Overwrite)]
+    merge_mode: MergeMode,
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
@@ -104,10 +111,48 @@ async fn main() -> ExitCode {
         }
     };
 
+    let existing = if let Some(ref out) = args.output {
+        match out.try_exists() {
+            Ok(true) => match File::open(out).await {
+                Ok(file) => match match args.format {
+                    Format::Env => EnvOutput.load_existing(file).await,
+                    Format::Shell => ShellOutput.load_existing(file).await,
+                    Format::Json => JsonOutput.load_existing(file).await,
+                } {
+                    Ok(existing) => Some(existing),
+                    Err(err) => {
+                        eprintln!("Error loading existing output file: {}", err);
+                        return ExitCode::FAILURE;
+                    }
+                },
+                Err(err) => {
+                    eprintln!("Error opening existing output file: {}", err);
+                    return ExitCode::FAILURE;
+                }
+            },
+            Ok(false) => None,
+            Err(err) => {
+                eprintln!("Error checking if output file exists: {}", err);
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+
+    let merged_entries = if let Some(existing) = existing {
+        merge(output_entries, existing, args.merge_mode)
+    } else {
+        output_entries
+            .into_iter()
+            .map(|(k, v)| (Cow::Borrowed(k), v))
+            .collect()
+    };
+
     let output = match args.format {
-        Format::Env => EnvFormatter::new().format(&output_entries),
-        Format::Shell => ShellFormatter::new().format(&output_entries),
-        Format::Json => JsonFormatter::new().format(&output_entries),
+        Format::Env => EnvOutput.format(&merged_entries),
+        Format::Shell => ShellOutput.format(&merged_entries),
+        Format::Json => JsonOutput.format(&merged_entries),
     };
 
     let result = match args.output {

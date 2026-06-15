@@ -3,18 +3,20 @@
 //! A lightweight utility for syncing AWS Secrets Manager secrets to environment variables.
 
 mod error;
-mod formatters;
+mod output;
 mod parser;
 mod providers;
 
 use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 
 use error::Error;
-pub use formatters::{EnvFormatter, Formatter, JsonFormatter, ShellFormatter};
 use indexmap::IndexMap;
+pub use output::{EnvOutput, JsonOutput, Output, ShellOutput};
 pub use parser::{EnvEntries, EnvEntry, SecretConfig, SecretProviderConfig, parse};
 use providers::{ParameterStoreProvider, Provider, SecretsManagerProvider};
 use regex::Regex;
+
+use clap::ValueEnum;
 
 /// Returns a map of key value pairs after resolving all secrets
 /// and applying placeholders and overrides.
@@ -92,6 +94,45 @@ pub async fn process_entries<'a>(
     );
 
     Ok(result)
+}
+
+#[derive(ValueEnum, Clone, Eq, PartialEq)]
+pub enum MergeMode {
+    Overwrite,
+    Fallback,
+    Override,
+}
+
+pub fn merge<'a>(
+    base: IndexMap<&'a str, Cow<'a, str>>,
+    existing: IndexMap<String, String>,
+    mode: MergeMode,
+) -> IndexMap<Cow<'a, str>, Cow<'a, str>> {
+    let mut base = base
+        .into_iter()
+        .map(|(k, v)| (Cow::Borrowed(k), v))
+        .collect::<IndexMap<Cow<'a, str>, Cow<'a, str>>>();
+
+    if mode == MergeMode::Overwrite {
+        return base;
+    }
+
+    let mut existing = existing
+        .into_iter()
+        .map(|(k, v)| (Cow::Owned(k), Cow::Owned(v)))
+        .collect::<IndexMap<Cow<'a, str>, Cow<'a, str>>>();
+
+    match mode {
+        MergeMode::Overwrite => unreachable!(),
+        MergeMode::Fallback => {
+            existing.extend(base.into_iter());
+            existing
+        }
+        MergeMode::Override => {
+            base.extend(existing.into_iter());
+            base
+        }
+    }
 }
 
 static RE_PLACEHOLDER: OnceLock<Regex> = OnceLock::new();
@@ -177,5 +218,69 @@ mod tests {
         let result = replace_placeholders(input, &placeholders);
 
         assert_eq!(result, Ok("bar/456".to_string()))
+    }
+
+    fn base_map() -> IndexMap<&'static str, Cow<'static, str>> {
+        let mut m = IndexMap::new();
+        m.insert("SHARED", Cow::Borrowed("base"));
+        m.insert("ONLY_BASE", Cow::Borrowed("b"));
+        m
+    }
+
+    fn existing_map() -> IndexMap<String, String> {
+        let mut m = IndexMap::new();
+        m.insert("SHARED".to_string(), "existing".to_string());
+        m.insert("ONLY_EXISTING".to_string(), "e".to_string());
+        m
+    }
+
+    #[test]
+    fn test_merge_overwrite_ignores_existing() {
+        let result = merge(base_map(), existing_map(), MergeMode::Overwrite);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.get("SHARED").unwrap(), "base");
+        assert_eq!(result.get("ONLY_BASE").unwrap(), "b");
+        assert!(!result.contains_key("ONLY_EXISTING"));
+    }
+
+    #[test]
+    fn test_merge_fallback_base_wins_existing_fills_gaps() {
+        let result = merge(base_map(), existing_map(), MergeMode::Fallback);
+
+        assert_eq!(result.get("SHARED").unwrap(), "base");
+        assert_eq!(result.get("ONLY_BASE").unwrap(), "b");
+        assert_eq!(result.get("ONLY_EXISTING").unwrap(), "e");
+
+        let keys: Vec<&str> = result.keys().map(|k| k.as_ref()).collect();
+        assert_eq!(keys, vec!["SHARED", "ONLY_EXISTING", "ONLY_BASE"]);
+    }
+
+    #[test]
+    fn test_merge_override_existing_wins() {
+        let result = merge(base_map(), existing_map(), MergeMode::Override);
+
+        assert_eq!(result.get("SHARED").unwrap(), "existing");
+        assert_eq!(result.get("ONLY_BASE").unwrap(), "b");
+        assert_eq!(result.get("ONLY_EXISTING").unwrap(), "e");
+
+        let keys: Vec<&str> = result.keys().map(|k| k.as_ref()).collect();
+        assert_eq!(keys, vec!["SHARED", "ONLY_BASE", "ONLY_EXISTING"]);
+    }
+
+    #[test]
+    fn test_merge_with_empty_existing_is_identity() {
+        let empty: IndexMap<String, String> = IndexMap::new();
+
+        for mode in [
+            MergeMode::Overwrite,
+            MergeMode::Fallback,
+            MergeMode::Override,
+        ] {
+            let result = merge(base_map(), empty.clone(), mode);
+            assert_eq!(result.len(), 2);
+            assert_eq!(result.get("SHARED").unwrap(), "base");
+            assert_eq!(result.get("ONLY_BASE").unwrap(), "b");
+        }
     }
 }
