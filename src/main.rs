@@ -165,7 +165,15 @@ async fn main() -> ExitCode {
     };
 
     let result = match args.output {
-        Some(path) => fs::write(path, output.as_bytes()),
+        Some(path) => {
+            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                if let Err(err) = fs::create_dir_all(parent) {
+                    eprintln!("Error creating output directory: {}", err);
+                    return ExitCode::FAILURE;
+                }
+            }
+            fs::write(path, output.as_bytes())
+        }
         None => io::stdout().write_all(output.as_bytes()),
     };
 

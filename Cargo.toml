@@ -2,7 +2,7 @@
 name = "awsm-env"
 description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
 authors = ["Affan Shahid <affan.shahid.94@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 homepage = "https://github.com/affanshahid/awsm-env"
 documentation = "https://docs.rs/awsm-env"
@@ -22,9 +22,9 @@ itertools = "0.14.0"
 pest = "2.8.0"
 pest_derive = "2.8.0"
 regex = "1.11.1"
-serde_json = "1.0.140"
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
 thiserror = "2.0.12"
-toml = "0.8"
+toml = { version = "0.8", features = ["preserve_order"] }
 tokio = { version = "1.44.1", features = ["full"] }
 
 [dev-dependencies]
