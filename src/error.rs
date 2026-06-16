@@ -38,6 +38,12 @@ pub enum Error {
 
     #[error("Serialization / Deserialization error: {0}")]
     SerdeError(#[from] SerdeError),
+
+    #[error("TOML deserialization error: {0}")]
+    TomlDeError(#[from] TomlDeError),
+
+    #[error("TOML serialization error: {0}")]
+    TomlSerError(#[from] TomlSerError),
 }
 
 #[derive(Error, Debug)]
@@ -105,3 +111,27 @@ impl PartialEq for SerdeError {
 }
 
 impl Eq for SerdeError {}
+
+#[derive(Error, Debug)]
+#[error("{0:#?}")]
+pub struct TomlDeError(#[from] toml::de::Error);
+
+impl PartialEq for TomlDeError {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for TomlDeError {}
+
+#[derive(Error, Debug)]
+#[error("{0:#?}")]
+pub struct TomlSerError(#[from] toml::ser::Error);
+
+impl PartialEq for TomlSerError {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for TomlSerError {}

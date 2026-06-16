@@ -8,7 +8,7 @@ use std::{
 };
 
 use awsm_env::{
-    ClaudeOutput, EnvOutput, JsonOutput, MergeMode, Output, ShellOutput, merge, parse,
+    ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, MergeMode, Output, ShellOutput, merge, parse,
     process_entries,
 };
 use clap::{Parser, ValueEnum};
@@ -65,6 +65,7 @@ enum Format {
     Shell,
     Json,
     Claude,
+    Codex,
 }
 
 #[tokio::main]
@@ -110,6 +111,7 @@ async fn main() -> ExitCode {
         Format::Shell => Box::new(ShellOutput),
         Format::Json => Box::new(JsonOutput),
         Format::Claude => Box::new(ClaudeOutput::new(args.output.clone())),
+        Format::Codex => Box::new(CodexOutput::new(args.output.clone())),
     };
 
     let output_entries = match process_entries(input_entries, &vars, &placeholders).await {
