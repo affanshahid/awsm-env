@@ -86,7 +86,7 @@ async fn main() -> ExitCode {
     let input = match fs::read_to_string(args.spec) {
         Ok(file) => file,
         Err(err) => {
-            eprintln!("Error reading file: {}", err);
+            eprintln!("Error reading specification file: {}", err);
             return ExitCode::FAILURE;
         }
     };
