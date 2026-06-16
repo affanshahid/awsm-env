@@ -1,6 +1,12 @@
-use std::{borrow::Cow, fs::File, io};
+use std::{
+    borrow::Cow,
+    fs::{self, File},
+    io,
+    path::PathBuf,
+};
 
 use indexmap::IndexMap;
+use serde_json::{Map, Value};
 
 use crate::{
     error::{Error, IoError, SerdeError},
@@ -10,7 +16,7 @@ use crate::{
 /// By implementing `Output` a type provides a way to format an [`IndexMap`]
 /// of key value pairs and to load existing values back from a file in that format.
 pub trait Output {
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> String;
+    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error>;
     fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error>;
 }
 
@@ -19,7 +25,7 @@ pub struct EnvOutput;
 
 impl Output for EnvOutput {
     /// Formats environment entries into `.env` format
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> String {
+    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
         let mut output = String::new();
 
         for (key, value) in entries {
@@ -30,7 +36,7 @@ impl Output for EnvOutput {
             ));
         }
 
-        output
+        Ok(output)
     }
 
     /// Loads existing environment entries from a file in `.env` format
@@ -49,7 +55,7 @@ pub struct ShellOutput;
 
 impl Output for ShellOutput {
     /// Formats environment entries into shell variable export commands
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> String {
+    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
         let mut output = String::new();
 
         for (key, value) in entries {
@@ -60,7 +66,7 @@ impl Output for ShellOutput {
             ));
         }
 
-        output
+        Ok(output)
     }
 
     /// Loads existing environment entries from a file in shell variable export command format
@@ -80,8 +86,8 @@ pub struct JsonOutput;
 
 impl Output for JsonOutput {
     /// Formats environment entries into JSON of the form `{"KEY": "value"}`
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> String {
-        serde_json::to_string(entries).expect("IndexMap should be serialized to JSON") + "\n"
+    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
+        Ok(serde_json::to_string(entries).expect("IndexMap should be serialized to JSON") + "\n")
     }
 
     /// Loads existing environment entries from a JSON file
@@ -90,6 +96,53 @@ impl Output for JsonOutput {
         let obj = serde_json::from_str(&input).map_err(SerdeError::from)?;
 
         Ok(obj)
+    }
+}
+
+/// Formats environment entries into Claude Code's settings file format using [`ClaudeOutput::format`]
+pub struct ClaudeOutput {
+    path: PathBuf,
+}
+
+impl ClaudeOutput {
+    pub fn new(path: Option<PathBuf>) -> Self {
+        Self {
+            path: path.unwrap_or(PathBuf::from(".claude/settings.local.json")),
+        }
+    }
+}
+
+impl Output for ClaudeOutput {
+    /// Formats environment entries into Claude Code's settings file format of the form `{"env": {"KEY": "value"}}`
+    /// Preserves other existing settings
+    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
+        let mut map = match self.path.try_exists().map_err(IoError::from)? {
+            true => {
+                let input = fs::read_to_string(&self.path).map_err(IoError::from)?;
+                let obj: Value = serde_json::from_str(&input).map_err(SerdeError::from)?;
+                serde_json::from_value(obj).map_err(SerdeError::from)?
+            }
+            false => Map::new(),
+        };
+        map.insert(
+            "env".to_string(),
+            serde_json::to_value(entries).map_err(SerdeError::from)?,
+        );
+
+        Ok(serde_json::to_string_pretty(&map).map_err(SerdeError::from)?)
+    }
+
+    /// Loads existing environment entries from a Claude Code settings file
+    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
+        let input = io::read_to_string(file).map_err(IoError::from)?;
+        let mut obj: Value = serde_json::from_str(&input).map_err(SerdeError::from)?;
+        let env = obj
+            .as_object_mut()
+            .and_then(|o| o.remove("env"))
+            .unwrap_or(Value::Object(Map::new()));
+        let env = serde_json::from_value(env).map_err(SerdeError::from)?;
+
+        Ok(env)
     }
 }
 
@@ -112,7 +165,7 @@ mod tests {
         );
 
         let output = EnvOutput;
-        let result = output.format(&input);
+        let result = output.format(&input).unwrap();
         assert_eq!(result, "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n")
     }
 
@@ -129,7 +182,7 @@ mod tests {
         );
 
         let output = ShellOutput;
-        let result = output.format(&input);
+        let result = output.format(&input).unwrap();
         assert_eq!(
             result,
             "export KEY1=\"value1\"\nexport KEY2=\"val\\\"ue2\"\n"
@@ -149,7 +202,7 @@ mod tests {
         );
 
         let output = JsonOutput;
-        let result = output.format(&input);
+        let result = output.format(&input).unwrap();
 
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&result).unwrap(),
@@ -211,6 +264,83 @@ mod tests {
         expected.insert("KEY1".to_string(), "value1".to_string());
         expected.insert("KEY2".to_string(), "val\"ue2".to_string());
         assert_eq!(result, expected);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_claude_output() {
+        let path = std::env::temp_dir().join("awsm_env_test_claude_new.json");
+        let _ = fs::remove_file(&path);
+
+        let mut input = IndexMap::new();
+        input.insert(
+            Cow::Owned("KEY1".to_string()),
+            Cow::Owned("value1".to_string()),
+        );
+        input.insert(
+            Cow::Owned("KEY2".to_string()),
+            Cow::Owned("val\"ue2".to_string()),
+        );
+
+        let output = ClaudeOutput::new(Some(path.clone()));
+        let result = output.format(&input).unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["env"]["KEY1"], "value1");
+        assert_eq!(parsed["env"]["KEY2"], "val\"ue2");
+    }
+
+    #[test]
+    fn test_claude_output_preserves_other_settings() {
+        let path = write_temp(
+            "claude_preserve.json",
+            r#"{"other":"keep","env":{"OLD":"x"}}"#,
+        );
+
+        let mut input = IndexMap::new();
+        input.insert(
+            Cow::Owned("KEY1".to_string()),
+            Cow::Owned("value1".to_string()),
+        );
+
+        let output = ClaudeOutput::new(Some(path.clone()));
+        let result = output.format(&input).unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["other"], "keep");
+        assert_eq!(parsed["env"]["KEY1"], "value1");
+        assert!(parsed["env"].get("OLD").is_none());
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_claude_load_existing() {
+        let path = write_temp(
+            "claude_load.json",
+            r#"{"other":"keep","env":{"KEY1":"value1","KEY2":"val\"ue2"}}"#,
+        );
+
+        let output = ClaudeOutput::new(Some(path.clone()));
+        let result = output.load_existing(File::open(&path).unwrap()).unwrap();
+
+        let mut expected = IndexMap::new();
+        expected.insert("KEY1".to_string(), "value1".to_string());
+        expected.insert("KEY2".to_string(), "val\"ue2".to_string());
+        assert_eq!(result, expected);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_claude_load_existing_no_env_key() {
+        let path = write_temp("claude_load_no_env.json", r#"{"other":"keep"}"#);
+
+        let output = ClaudeOutput::new(Some(path.clone()));
+        let result = output.load_existing(File::open(&path).unwrap()).unwrap();
+
+        assert!(result.is_empty());
 
         let _ = fs::remove_file(&path);
     }

@@ -8,7 +8,8 @@ use std::{
 };
 
 use awsm_env::{
-    EnvOutput, JsonOutput, MergeMode, Output, ShellOutput, merge, parse, process_entries,
+    ClaudeOutput, EnvOutput, JsonOutput, MergeMode, Output, ShellOutput, merge, parse,
+    process_entries,
 };
 use clap::{Parser, ValueEnum};
 use indexmap::IndexMap;
@@ -63,6 +64,7 @@ enum Format {
     Env,
     Shell,
     Json,
+    Claude,
 }
 
 #[tokio::main]
@@ -107,6 +109,7 @@ async fn main() -> ExitCode {
         Format::Env => Box::new(EnvOutput),
         Format::Shell => Box::new(ShellOutput),
         Format::Json => Box::new(JsonOutput),
+        Format::Claude => Box::new(ClaudeOutput::new(args.output.clone())),
     };
 
     let output_entries = match process_entries(input_entries, &vars, &placeholders).await {
@@ -151,7 +154,13 @@ async fn main() -> ExitCode {
             .collect()
     };
 
-    let output = outputter.format(&merged_entries);
+    let output = match outputter.format(&merged_entries) {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("Error formatting output: {}", err);
+            return ExitCode::FAILURE;
+        }
+    };
 
     let result = match args.output {
         Some(path) => fs::write(path, output.as_bytes()),

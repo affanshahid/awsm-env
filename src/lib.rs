@@ -11,7 +11,7 @@ use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 
 use error::Error;
 use indexmap::IndexMap;
-pub use output::{EnvOutput, JsonOutput, Output, ShellOutput};
+pub use output::{ClaudeOutput, EnvOutput, JsonOutput, Output, ShellOutput};
 pub use parser::{EnvEntries, EnvEntry, SecretConfig, SecretProviderConfig, parse};
 use providers::{ParameterStoreProvider, Provider, SecretsManagerProvider};
 use regex::Regex;
