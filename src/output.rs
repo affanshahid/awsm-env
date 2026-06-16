@@ -1,7 +1,6 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fs::File, io};
 
 use indexmap::IndexMap;
-use tokio::{fs::File, io::AsyncReadExt};
 
 use crate::{
     error::{Error, IoError, SerdeError},
@@ -12,8 +11,7 @@ use crate::{
 /// of key value pairs and to load existing values back from a file in that format.
 pub trait Output {
     fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> String;
-    #[allow(async_fn_in_trait)]
-    async fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error>;
+    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error>;
 }
 
 /// Formats environment entries into `.env` format using [`EnvOutput::format`]
@@ -36,12 +34,8 @@ impl Output for EnvOutput {
     }
 
     /// Loads existing environment entries from a file in `.env` format
-    async fn load_existing(&self, mut file: File) -> Result<IndexMap<String, String>, Error> {
-        let mut input = String::new();
-        file.read_to_string(&mut input)
-            .await
-            .map_err(IoError::from)?;
-
+    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
+        let input = io::read_to_string(file).map_err(IoError::from)?;
         let input_entries = parse(&input)?;
         Ok(input_entries
             .into_iter()
@@ -70,11 +64,8 @@ impl Output for ShellOutput {
     }
 
     /// Loads existing environment entries from a file in shell variable export command format
-    async fn load_existing(&self, mut file: File) -> Result<IndexMap<String, String>, Error> {
-        let mut input = String::new();
-        file.read_to_string(&mut input)
-            .await
-            .map_err(IoError::from)?;
+    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
+        let input = io::read_to_string(file).map_err(IoError::from)?;
 
         let input_entries = parse(&input)?;
         Ok(input_entries
@@ -94,11 +85,8 @@ impl Output for JsonOutput {
     }
 
     /// Loads existing environment entries from a JSON file
-    async fn load_existing(&self, mut file: File) -> Result<IndexMap<String, String>, Error> {
-        let mut input = String::new();
-        file.read_to_string(&mut input)
-            .await
-            .map_err(IoError::from)?;
+    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
+        let input = io::read_to_string(file).map_err(IoError::from)?;
         let obj = serde_json::from_str(&input).map_err(SerdeError::from)?;
 
         Ok(obj)
@@ -107,7 +95,7 @@ impl Output for JsonOutput {
 
 #[cfg(test)]
 mod tests {
-    use tokio::fs;
+    use std::fs;
 
     use super::*;
 
@@ -169,40 +157,35 @@ mod tests {
         )
     }
 
-    async fn write_temp(name: &str, contents: &str) -> std::path::PathBuf {
+    fn write_temp(name: &str, contents: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("awsm_env_test_{}", name));
-        fs::write(&path, contents).await.unwrap();
+        fs::write(&path, contents).unwrap();
         path
     }
 
-    #[tokio::test]
-    async fn test_env_load_existing() {
-        let path = write_temp("env_load.env", "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n").await;
+    #[test]
+    fn test_env_load_existing() {
+        let path = write_temp("env_load.env", "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n");
 
-        let result = EnvOutput
-            .load_existing(File::open(&path).await.unwrap())
-            .await
-            .unwrap();
+        let result = EnvOutput.load_existing(File::open(&path).unwrap()).unwrap();
 
         let mut expected = IndexMap::new();
         expected.insert("KEY1".to_string(), "value1".to_string());
         expected.insert("KEY2".to_string(), "val\"ue2".to_string());
         assert_eq!(result, expected);
 
-        let _ = fs::remove_file(&path).await;
+        let _ = fs::remove_file(&path);
     }
 
-    #[tokio::test]
-    async fn test_shell_load_existing() {
+    #[test]
+    fn test_shell_load_existing() {
         let path = write_temp(
             "shell_load.sh",
             "export KEY1=\"value1\"\nexport KEY2=\"val\\\"ue2\"\n",
-        )
-        .await;
+        );
 
         let result = ShellOutput
-            .load_existing(File::open(&path).await.unwrap())
-            .await
+            .load_existing(File::open(&path).unwrap())
             .unwrap();
 
         let mut expected = IndexMap::new();
@@ -210,20 +193,18 @@ mod tests {
         expected.insert("KEY2".to_string(), "val\"ue2".to_string());
         assert_eq!(result, expected);
 
-        let _ = fs::remove_file(&path).await;
+        let _ = fs::remove_file(&path);
     }
 
-    #[tokio::test]
-    async fn test_json_load_existing() {
+    #[test]
+    fn test_json_load_existing() {
         let path = write_temp(
             "json_load.json",
             "{\"KEY1\":\"value1\",\"KEY2\":\"val\\\"ue2\"}\n",
-        )
-        .await;
+        );
 
         let result = JsonOutput
-            .load_existing(File::open(&path).await.unwrap())
-            .await
+            .load_existing(File::open(&path).unwrap())
             .unwrap();
 
         let mut expected = IndexMap::new();
@@ -231,6 +212,6 @@ mod tests {
         expected.insert("KEY2".to_string(), "val\"ue2".to_string());
         assert_eq!(result, expected);
 
-        let _ = fs::remove_file(&path).await;
+        let _ = fs::remove_file(&path);
     }
 }

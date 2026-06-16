@@ -8,8 +8,8 @@ use aws_sdk_ssm::{
     error::SdkError as ParameterStoreSdkError, operation::get_parameters::GetParametersError,
 };
 
+use std::io;
 use thiserror::Error;
-use tokio::io;
 
 use crate::parser::Rule;
 

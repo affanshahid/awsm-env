@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
+    fs::{self, File},
     io::{self, Write},
     path::PathBuf,
     process::ExitCode,
@@ -11,7 +12,6 @@ use awsm_env::{
 };
 use clap::{Parser, ValueEnum};
 use indexmap::IndexMap;
-use tokio::fs::{self, File};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -81,7 +81,7 @@ async fn main() -> ExitCode {
         .into_iter()
         .collect();
 
-    let input = match fs::read_to_string(args.spec).await {
+    let input = match fs::read_to_string(args.spec) {
         Ok(file) => file,
         Err(err) => {
             eprintln!("Error reading file: {}", err);
@@ -103,6 +103,12 @@ async fn main() -> ExitCode {
         }
     }
 
+    let outputter: Box<dyn Output> = match args.format {
+        Format::Env => Box::new(EnvOutput),
+        Format::Shell => Box::new(ShellOutput),
+        Format::Json => Box::new(JsonOutput),
+    };
+
     let output_entries = match process_entries(input_entries, &vars, &placeholders).await {
         Ok(entries) => entries,
         Err(err) => {
@@ -113,12 +119,8 @@ async fn main() -> ExitCode {
 
     let existing = if let Some(ref out) = args.output {
         match out.try_exists() {
-            Ok(true) => match File::open(out).await {
-                Ok(file) => match match args.format {
-                    Format::Env => EnvOutput.load_existing(file).await,
-                    Format::Shell => ShellOutput.load_existing(file).await,
-                    Format::Json => JsonOutput.load_existing(file).await,
-                } {
+            Ok(true) => match File::open(out) {
+                Ok(file) => match outputter.load_existing(file) {
                     Ok(existing) => Some(existing),
                     Err(err) => {
                         eprintln!("Error loading existing output file: {}", err);
@@ -149,14 +151,10 @@ async fn main() -> ExitCode {
             .collect()
     };
 
-    let output = match args.format {
-        Format::Env => EnvOutput.format(&merged_entries),
-        Format::Shell => ShellOutput.format(&merged_entries),
-        Format::Json => JsonOutput.format(&merged_entries),
-    };
+    let output = outputter.format(&merged_entries);
 
     let result = match args.output {
-        Some(path) => fs::write(path, output.as_bytes()).await,
+        Some(path) => fs::write(path, output.as_bytes()),
         None => io::stdout().write_all(output.as_bytes()),
     };
 
