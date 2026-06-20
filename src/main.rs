@@ -3,70 +3,16 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, Write},
-    path::PathBuf,
     process::ExitCode,
 };
 
 use awsm_env::{
-    ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, MergeMode, Output, ShellOutput, merge, parse,
-    process_entries,
+    ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, Output, ShellOutput,
+    cli::{Args, Format},
+    merge, parse, process_entries,
 };
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use indexmap::IndexMap;
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Path to the spec file
-    #[arg(default_value = ".env.example")]
-    spec: PathBuf,
-
-    /// Output format
-    #[arg(long, short, value_enum, default_value = "env")]
-    format: Format,
-
-    /// Path of a file to write the output to instead of writing to stdout
-    #[arg(long, short)]
-    output: Option<PathBuf>,
-
-    /// Variable definitions of the form `KEY=value` to add or override keys
-    /// in the output
-    #[arg(long = "var", short, value_parser = parse_key_val)]
-    vars: Option<Vec<(String, String)>>,
-
-    /// Placeholder definitions of the form `KEY=value` to be used in secret names
-    #[arg(long = "placeholder", short, value_parser = parse_key_val)]
-    placeholders: Option<Vec<(String, String)>>,
-
-    /// Don't use defaults from the spec file
-    #[arg(long)]
-    no_defaults: bool,
-
-    /// Merge mode to use when merging with existing output file. Defaults to `overwrite`.
-    #[arg(long, short, value_enum, default_value_t = MergeMode::Overwrite)]
-    merge_mode: MergeMode,
-}
-
-fn parse_key_val(s: &str) -> Result<(String, String), String> {
-    let mut split = s.split("=");
-    let key = split
-        .next()
-        .ok_or(format!("Key value pairs should be of the form key=value"))?;
-    let value = split
-        .next()
-        .ok_or(format!("Key value pairs should be of the form key=value",))?;
-
-    Ok((key.to_string(), value.to_owned()))
-}
-
-#[derive(Clone, ValueEnum)]
-enum Format {
-    Env,
-    Shell,
-    Json,
-    Claude,
-    Codex,
-}
 
 #[tokio::main]
 async fn main() -> ExitCode {

@@ -2,6 +2,7 @@
 //!
 //! A lightweight utility for syncing AWS Secrets Manager secrets to environment variables.
 
+pub mod cli;
 mod error;
 mod output;
 mod parser;
@@ -16,7 +17,7 @@ pub use parser::{EnvEntries, EnvEntry, SecretConfig, SecretProviderConfig, parse
 use providers::{ParameterStoreProvider, Provider, SecretsManagerProvider};
 use regex::Regex;
 
-use clap::ValueEnum;
+use crate::cli::MergeMode;
 
 /// Returns a map of key value pairs after resolving all secrets
 /// and applying placeholders and overrides.
@@ -94,13 +95,6 @@ pub async fn process_entries<'a>(
     );
 
     Ok(result)
-}
-
-#[derive(ValueEnum, Clone, Eq, PartialEq)]
-pub enum MergeMode {
-    Overwrite,
-    Fallback,
-    Override,
 }
 
 pub fn merge<'a>(
