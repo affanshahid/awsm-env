@@ -1,6 +1,23 @@
 use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
+use indexmap::IndexMap;
+
+#[derive(Clone, ValueEnum)]
+pub enum Format {
+    Env,
+    Shell,
+    Json,
+    Claude,
+    Codex,
+}
+
+#[derive(ValueEnum, Clone, Eq, PartialEq)]
+pub enum MergeMode {
+    Overwrite,
+    Fallback,
+    Override,
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -35,20 +52,14 @@ pub struct Args {
     pub merge_mode: MergeMode,
 }
 
-#[derive(Clone, ValueEnum)]
-pub enum Format {
-    Env,
-    Shell,
-    Json,
-    Claude,
-    Codex,
-}
+impl Args {
+    pub fn placeholders(&self) -> IndexMap<String, String> {
+        self.placeholders.iter().flatten().cloned().collect()
+    }
 
-#[derive(ValueEnum, Clone, Eq, PartialEq)]
-pub enum MergeMode {
-    Overwrite,
-    Fallback,
-    Override,
+    pub fn vars(&self) -> IndexMap<String, String> {
+        self.vars.iter().flatten().cloned().collect()
+    }
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {

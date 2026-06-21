@@ -8,7 +8,7 @@ mod output;
 mod parser;
 mod providers;
 
-use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
+use std::{borrow::Cow, sync::OnceLock};
 
 use error::Error;
 use indexmap::IndexMap;
@@ -24,7 +24,7 @@ use crate::cli::MergeMode;
 pub async fn process_entries<'a>(
     mut entries: EnvEntries<'a>,
     overrides: &'a IndexMap<String, String>,
-    placeholders: &'a HashMap<String, String>,
+    placeholders: &'a IndexMap<String, String>,
 ) -> Result<IndexMap<&'a str, Cow<'a, str>>, Error> {
     let mut sm_entries = vec![];
     let mut ps_entries = vec![];
@@ -132,7 +132,10 @@ pub fn merge<'a>(
 static RE_PLACEHOLDER: OnceLock<Regex> = OnceLock::new();
 static MARKER: &str = "\u{FFFF}ESCAPED\u{FFFF}";
 
-fn replace_placeholders(id: &str, placeholders: &HashMap<String, String>) -> Result<String, Error> {
+fn replace_placeholders(
+    id: &str,
+    placeholders: &IndexMap<String, String>,
+) -> Result<String, Error> {
     let re = RE_PLACEHOLDER.get_or_init(|| Regex::new(r"\$(\w+)").unwrap());
     let output = Cow::Owned(id.replace("$$", MARKER));
 
@@ -167,7 +170,7 @@ mod tests {
     #[test]
     fn test_replaces_placeholders() {
         let input = "$foo/bar/$baz";
-        let mut placeholders = HashMap::new();
+        let mut placeholders = IndexMap::new();
 
         placeholders.insert("foo".to_string(), "123".to_string());
         placeholders.insert("baz".to_string(), "456".to_string());
@@ -180,7 +183,7 @@ mod tests {
     #[test]
     fn test_handles_escapes() {
         let input = "$$foo/bar/$baz";
-        let mut placeholders = HashMap::new();
+        let mut placeholders = IndexMap::new();
 
         placeholders.insert("foo".to_string(), "123".to_string());
         placeholders.insert("baz".to_string(), "456".to_string());
@@ -193,7 +196,7 @@ mod tests {
     #[test]
     fn test_returns_error_for_missing_placeholder() {
         let input = "$foo/bar/$baz";
-        let mut placeholders = HashMap::new();
+        let mut placeholders = IndexMap::new();
 
         placeholders.insert("baz".to_string(), "456".to_string());
 
@@ -205,7 +208,7 @@ mod tests {
     #[test]
     fn test_supports_underscores_in_placeholders() {
         let input = "bar/$baz_1";
-        let mut placeholders = HashMap::new();
+        let mut placeholders = IndexMap::new();
 
         placeholders.insert("baz_1".to_string(), "456".to_string());
 

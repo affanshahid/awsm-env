@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fs::{self, File},
     io::{self, Write},
     process::ExitCode,
@@ -12,23 +11,13 @@ use awsm_env::{
     merge, parse, process_entries,
 };
 use clap::Parser;
-use indexmap::IndexMap;
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let args = Args::parse();
 
-    let vars: IndexMap<String, String> = args
-        .vars
-        .unwrap_or(Vec::with_capacity(0))
-        .into_iter()
-        .collect();
-
-    let placeholders: HashMap<String, String> = args
-        .placeholders
-        .unwrap_or(Vec::with_capacity(0))
-        .into_iter()
-        .collect();
+    let vars = args.vars();
+    let placeholders = args.placeholders();
 
     let input = match fs::read_to_string(args.spec) {
         Ok(file) => file,
