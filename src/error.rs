@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::parser::Rule;
 
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug)]
 pub enum Error {
     #[error("Unable to parse input:\n{0}")]
     ParsingError(#[from] pest::error::Error<Rule>),
@@ -50,25 +50,9 @@ pub enum Error {
 #[error("{0:#?}")]
 pub struct AwsSmSdkError(#[from] SecretsManagerSdkError<BatchGetSecretValueError>);
 
-impl PartialEq for AwsSmSdkError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for AwsSmSdkError {}
-
 #[derive(Error, Debug)]
 #[error("{0:#?}")]
 pub struct AwsSmApiError(SecretsManagerApiErrorType);
-
-impl PartialEq for AwsSmApiError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for AwsSmApiError {}
 
 impl From<SecretsManagerApiErrorType> for AwsSmApiError {
     fn from(value: SecretsManagerApiErrorType) -> Self {
@@ -80,58 +64,18 @@ impl From<SecretsManagerApiErrorType> for AwsSmApiError {
 #[error("{0:#?}")]
 pub struct AwsPsSdkError(#[from] ParameterStoreSdkError<GetParametersError>);
 
-impl PartialEq for AwsPsSdkError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for AwsPsSdkError {}
-
 #[derive(Error, Debug)]
 #[error("{0:#?}")]
 pub struct IoError(#[from] io::Error);
-
-impl PartialEq for IoError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for IoError {}
 
 #[derive(Error, Debug)]
 #[error("{0:#?}")]
 pub struct SerdeError(#[from] serde_json::Error);
 
-impl PartialEq for SerdeError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for SerdeError {}
-
 #[derive(Error, Debug)]
 #[error("{0:#?}")]
 pub struct TomlDeError(#[from] toml::de::Error);
 
-impl PartialEq for TomlDeError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for TomlDeError {}
-
 #[derive(Error, Debug)]
 #[error("{0:#?}")]
 pub struct TomlSerError(#[from] toml::ser::Error);
-
-impl PartialEq for TomlSerError {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for TomlSerError {}

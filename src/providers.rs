@@ -15,11 +15,11 @@ pub trait Provider {
 }
 
 /// Fetches secrets from AWS Secrets Manager
-pub struct SecretsManagerProvider {
+pub struct AwsSecretsManagerProvider {
     client: aws_sdk_secretsmanager::Client,
 }
 
-impl SecretsManagerProvider {
+impl AwsSecretsManagerProvider {
     pub async fn new() -> Self {
         let config = aws_config::load_from_env().await;
         let client = aws_sdk_secretsmanager::Client::new(&config);
@@ -28,7 +28,7 @@ impl SecretsManagerProvider {
     }
 }
 
-impl Provider for SecretsManagerProvider {
+impl Provider for AwsSecretsManagerProvider {
     type Config = String;
 
     // All the expects are because the AWS SDK isn't idiomatic
@@ -82,11 +82,11 @@ impl Provider for SecretsManagerProvider {
     }
 }
 
-pub struct ParameterStoreProvider {
+pub struct AwsParameterStoreProvider {
     client: aws_sdk_ssm::Client,
 }
 
-impl ParameterStoreProvider {
+impl AwsParameterStoreProvider {
     pub async fn new() -> Self {
         let config = aws_config::load_from_env().await;
         let client = aws_sdk_ssm::Client::new(&config);
@@ -95,7 +95,7 @@ impl ParameterStoreProvider {
     }
 }
 
-impl Provider for ParameterStoreProvider {
+impl Provider for AwsParameterStoreProvider {
     type Config = String;
 
     async fn try_provide_secrets(&self, ids: Vec<String>) -> Result<Vec<Option<String>>, Error> {

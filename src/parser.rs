@@ -50,8 +50,8 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 /// let result = parse(&input);
 ///
 /// assert_eq!(
-///     result,
-///     Ok(vec![
+///     result.unwrap(),
+///     vec![
 ///         EnvEntry {
 ///             key: "KEY1",
 ///             value: Some(Cow::Borrowed("value1")),
@@ -68,7 +68,7 @@ pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
 ///                 provider_config: SecretProviderConfig::AwsSm("barbaz/456")
 ///             })
 ///         }
-///     ])
+///     ]
 /// )
 /// ```
 pub fn parse(input: &'_ str) -> Result<EnvEntries<'_>, Error> {
@@ -185,12 +185,12 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: None
-            }])
+            }]
         )
     }
 
@@ -202,12 +202,12 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: None
-            }])
+            }]
         )
     }
 
@@ -220,8 +220,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
@@ -232,7 +232,7 @@ mod tests {
                     value: Some(Cow::Borrowed("value2")),
                     secret: None
                 }
-            ])
+            ]
         )
     }
 
@@ -244,12 +244,12 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: None
-            }])
+            }]
         )
     }
 
@@ -262,15 +262,15 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: Some(SecretConfig {
                     required: true,
                     provider_config: SecretProviderConfig::AwsSm("foobar/123")
                 })
-            }])
+            }]
         )
     }
 
@@ -283,15 +283,15 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: Some(SecretConfig {
                     required: true,
                     provider_config: SecretProviderConfig::AwsPs("foobar/123")
                 })
-            }])
+            }]
         )
     }
 
@@ -304,15 +304,15 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: Some(SecretConfig {
                     required: false,
                     provider_config: SecretProviderConfig::AwsPs("foobar/123")
                 })
-            }])
+            }]
         )
     }
 
@@ -328,8 +328,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
@@ -346,7 +346,7 @@ mod tests {
                         provider_config: SecretProviderConfig::AwsSm("barbaz/456")
                     })
                 }
-            ])
+            ]
         )
     }
 
@@ -359,15 +359,15 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: Some(SecretConfig {
                     required: true,
                     provider_config: SecretProviderConfig::AwsSm("foobar/123")
                 })
-            },])
+            },]
         )
     }
 
@@ -381,15 +381,15 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("value1")),
                 secret: Some(SecretConfig {
                     required: true,
                     provider_config: SecretProviderConfig::AwsSm("foobar/123")
                 })
-            }])
+            }]
         )
     }
 
@@ -407,8 +407,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
@@ -425,7 +425,7 @@ mod tests {
                         provider_config: SecretProviderConfig::AwsSm("barbaz/456")
                     })
                 }
-            ])
+            ]
         )
     }
 
@@ -440,8 +440,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
@@ -462,7 +462,7 @@ mod tests {
                     value: Some(Cow::Borrowed("value4")),
                     secret: None
                 }
-            ])
+            ]
         )
     }
 
@@ -476,8 +476,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Owned("val\"ue1".to_string())),
@@ -493,7 +493,7 @@ mod tests {
                     value: Some(Cow::Owned("val`ue3".to_string())),
                     secret: None
                 }
-            ])
+            ]
         )
     }
 
@@ -536,8 +536,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("value1")),
@@ -548,7 +548,7 @@ mod tests {
                     value: None,
                     secret: None
                 }
-            ])
+            ]
         )
     }
 
@@ -561,12 +561,12 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![EnvEntry {
+            result.unwrap(),
+            vec![EnvEntry {
                 key: "KEY1",
                 value: Some(Cow::Borrowed("overridden")),
                 secret: None
-            },])
+            },]
         )
     }
 
@@ -580,8 +580,8 @@ mod tests {
         let result = parse(&input);
 
         assert_eq!(
-            result,
-            Ok(vec![
+            result.unwrap(),
+            vec![
                 EnvEntry {
                     key: "KEY1",
                     value: Some(Cow::Borrowed("  val  ue  1  ")),
@@ -597,7 +597,7 @@ mod tests {
                     value: Some(Cow::Borrowed("  val  ue  3  ")),
                     secret: None
                 }
-            ])
+            ]
         )
     }
 }

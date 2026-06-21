@@ -14,7 +14,7 @@ use error::Error;
 use indexmap::IndexMap;
 pub use output::{ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, Output, ShellOutput};
 pub use parser::{EnvEntries, EnvEntry, SecretConfig, SecretProviderConfig, parse};
-use providers::{ParameterStoreProvider, Provider, SecretsManagerProvider};
+use providers::{AwsParameterStoreProvider, AwsSecretsManagerProvider, Provider};
 use regex::Regex;
 
 use crate::cli::MergeMode;
@@ -48,7 +48,7 @@ pub async fn process_entries<'a>(
     }
 
     if !sm_entries.is_empty() {
-        let provider = SecretsManagerProvider::new().await;
+        let provider = AwsSecretsManagerProvider::new().await;
         let secrets = provider
             .try_provide_secrets(sm_entries.iter().map(|(_, id)| id.clone()).collect())
             .await?;
@@ -66,7 +66,7 @@ pub async fn process_entries<'a>(
     }
 
     if !ps_entries.is_empty() {
-        let provider = ParameterStoreProvider::new().await;
+        let provider = AwsParameterStoreProvider::new().await;
         let secrets = provider
             .try_provide_secrets(ps_entries.iter().map(|(_, id)| id.clone()).collect())
             .await?;
@@ -177,7 +177,7 @@ mod tests {
 
         let result = replace_placeholders(input, &placeholders);
 
-        assert_eq!(result, Ok("123/bar/456".to_string()))
+        assert_eq!(result.unwrap(), "123/bar/456".to_string())
     }
 
     #[test]
@@ -190,7 +190,7 @@ mod tests {
 
         let result = replace_placeholders(input, &placeholders);
 
-        assert_eq!(result, Ok("$foo/bar/456".to_string()))
+        assert_eq!(result.unwrap(), "$foo/bar/456".to_string())
     }
 
     #[test]
@@ -214,7 +214,7 @@ mod tests {
 
         let result = replace_placeholders(input, &placeholders);
 
-        assert_eq!(result, Ok("bar/456".to_string()))
+        assert_eq!(result.unwrap(), "bar/456".to_string())
     }
 
     fn base_map() -> IndexMap<&'static str, Cow<'static, str>> {
