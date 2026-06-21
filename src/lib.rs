@@ -7,22 +7,25 @@ mod error;
 mod output;
 mod parser;
 mod providers;
+mod variable;
 
 use std::{borrow::Cow, sync::OnceLock};
 
 use error::Error;
 use indexmap::IndexMap;
 pub use output::{ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, Output, ShellOutput};
-pub use parser::{EnvEntries, EnvEntry, SecretConfig, SecretProviderConfig, parse};
 use providers::{AwsParameterStoreProvider, AwsSecretsManagerProvider, Provider};
 use regex::Regex;
 
-use crate::cli::MergeMode;
+use crate::{
+    cli::MergeMode,
+    variable::{ProviderConfig, Variables},
+};
 
 /// Returns a map of key value pairs after resolving all secrets
 /// and applying placeholders and overrides.
 pub async fn process_entries<'a>(
-    mut entries: EnvEntries<'a>,
+    mut entries: Variables,
     overrides: &'a IndexMap<String, String>,
     placeholders: &'a IndexMap<String, String>,
 ) -> Result<IndexMap<&'a str, Cow<'a, str>>, Error> {
@@ -30,18 +33,12 @@ pub async fn process_entries<'a>(
     let mut ps_entries = vec![];
 
     for (i, entry) in entries.iter().enumerate() {
-        match entry.secret {
-            Some(SecretConfig {
-                provider_config: SecretProviderConfig::AwsSm(id),
-                ..
-            }) => {
-                sm_entries.push((i, replace_placeholders(id, placeholders)?));
+        match entry.provider_config {
+            Some(ProviderConfig::AwsSecretsManager(id)) => {
+                sm_entries.push((i, replace_placeholders(&id, placeholders)?));
             }
-            Some(SecretConfig {
-                provider_config: SecretProviderConfig::AwsPs(id),
-                ..
-            }) => {
-                ps_entries.push((i, replace_placeholders(id, placeholders)?));
+            Some(ProviderConfig::AwsParameterStore(id)) => {
+                ps_entries.push((i, replace_placeholders(&id, placeholders)?));
             }
             None => {}
         }
@@ -54,10 +51,10 @@ pub async fn process_entries<'a>(
             .await?;
 
         for ((i, id), secret) in sm_entries.into_iter().zip(secrets) {
-            match (secret, &entries[i].secret) {
+            match (secret, &entries[i].provider_config) {
                 (_, None) => unreachable!(),
-                (Some(secret), _) => entries[i].value = Some(Cow::Owned(secret)),
-                (None, Some(SecretConfig { required: true, .. })) => {
+                (Some(secret), _) => entries[i].value = Some(secret),
+                (None, _) if entries[i].required => {
                     return Err(Error::ParameterNotFound(id));
                 }
                 _ => {}
@@ -72,10 +69,10 @@ pub async fn process_entries<'a>(
             .await?;
 
         for ((i, id), secret) in ps_entries.into_iter().zip(secrets) {
-            match (secret, &entries[i].secret) {
+            match (secret, &entries[i].provider_config) {
                 (_, None) => unreachable!(),
-                (Some(secret), _) => entries[i].value = Some(Cow::Owned(secret)),
-                (None, Some(SecretConfig { required: true, .. })) => {
+                (Some(secret), _) => entries[i].value = Some(secret),
+                (None, _) if entries[i].required => {
                     return Err(Error::ParameterNotFound(id));
                 }
                 _ => {}

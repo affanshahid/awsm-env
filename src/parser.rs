@@ -1,7 +1,5 @@
-use std::borrow::Cow;
-
-use crate::error::Error;
-use indexmap::IndexMap;
+use crate::variable::{ProviderConfig, Variable, Variables};
+use anyhow::Result;
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -9,168 +7,141 @@ use pest_derive::Parser;
 #[grammar = "env.pest"]
 struct EnvParser;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum SecretProviderConfig<'a> {
-    AwsSm(&'a str),
-    AwsPs(&'a str),
-}
+impl EnvParser {
+    /// Parses a string representing the contents of
+    /// an .env file returning [`EnvEntries`]
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let input = r#"
+    /// # @aws-sm foobar/123
+    /// KEY1=value1
+    /// # @aws-sm barbaz/456
+    /// KEY2=value2
+    /// "#;
+    /// let result = EnvParser::parse_variables(input);
+    ///
+    /// assert_eq!(
+    ///     *result.unwrap(),
+    ///     vec![
+    ///         Variable {
+    ///             key: "KEY1".to_owned(),
+    ///             required: true,
+    ///             default: Some("value1".to_owned()),
+    ///             provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
+    ///             ..Default::default()
+    ///         },
+    ///         Variable {
+    ///             key: "KEY2".to_owned(),
+    ///             required: true,
+    ///             default: Some("value2".to_owned()),
+    ///             provider_config: Some(ProviderConfig::AwsSecretsManager("barbaz/456".to_owned())),
+    ///             ..Default::default()
+    ///         }
+    ///     ]
+    /// )
+    /// ```
+    pub fn parse_variables(input: &str) -> Result<Variables> {
+        let file = EnvParser::parse(Rule::file, input)?
+            .next()
+            .expect("should have one file");
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct SecretConfig<'a> {
-    pub required: bool,
-    pub provider_config: SecretProviderConfig<'a>,
-}
+        let mut variables = Variables::new();
 
-/// Represents a single env entry.
-#[derive(Debug, PartialEq, Eq)]
-pub struct EnvEntry<'a> {
-    pub key: &'a str,
-    pub value: Option<Cow<'a, str>>,
-    pub secret: Option<SecretConfig<'a>>,
-}
-
-/// List of [`EnvEntry`]s.
-pub type EnvEntries<'a> = Vec<EnvEntry<'a>>;
-
-/// Parses a string representing the contents of
-/// an .env file returning [`EnvEntries`]
-///
-/// # Examples
-///
-/// ```
-/// # use awsm_env::*;
-/// # use std::borrow::Cow;
-///
-/// let input = r#"
-/// ## @aws-sm foobar/123
-/// KEY1=value1
-/// ## @aws-sm barbaz/456
-/// KEY2=value2
-/// "#;
-/// let result = parse(&input);
-///
-/// assert_eq!(
-///     result.unwrap(),
-///     vec![
-///         EnvEntry {
-///             key: "KEY1",
-///             value: Some(Cow::Borrowed("value1")),
-///             secret: Some(SecretConfig {
-///                 required: true,
-///                 provider_config: SecretProviderConfig::AwsSm("foobar/123")
-///             })
-///         },
-///         EnvEntry {
-///             key: "KEY2",
-///             value: Some(Cow::Borrowed("value2")),
-///             secret: Some(SecretConfig {
-///                 required: true,
-///                 provider_config: SecretProviderConfig::AwsSm("barbaz/456")
-///             })
-///         }
-///     ]
-/// )
-/// ```
-pub fn parse(input: &'_ str) -> Result<EnvEntries<'_>, Error> {
-    let file = EnvParser::parse(Rule::file, input)?
-        .next()
-        .expect("should have one file");
-
-    let mut entries = IndexMap::new();
-
-    for line in file.into_inner() {
-        match line.as_rule() {
-            Rule::declaration => {
-                let mut pairs = line.into_inner();
-                let (directive, pair) = match (pairs.next(), pairs.next()) {
-                    (Some(directive), Some(pair)) => (Some(directive), pair),
-                    (Some(pair), None) => (None, pair),
-                    _ => unreachable!(),
-                };
-
-                let mut pairs = pair.into_inner();
-
-                let pair_ident = pairs.next().expect("should have pair_ident").as_str();
-                let pair_value = pairs
-                    .next()
-                    .expect("should have pair_value")
-                    .into_inner()
-                    .next()
-                    .expect("should have inner value");
-
-                let raw_value = pair_value.as_str();
-
-                let pair_value = match pair_value.as_rule() {
-                    Rule::pair_value_dquote if raw_value.contains("\\\"") => {
-                        Cow::Owned(raw_value.replace("\\\"", "\""))
-                    }
-                    Rule::pair_value_squote if raw_value.contains("\\'") => {
-                        Cow::Owned(raw_value.replace("\\'", "'"))
-                    }
-                    Rule::pair_value_tick if raw_value.contains("\\`") => {
-                        Cow::Owned(raw_value.replace("\\`", "`"))
-                    }
-                    Rule::pair_value_raw => Cow::Borrowed(raw_value.trim()),
-                    Rule::pair_value_squote | Rule::pair_value_dquote | Rule::pair_value_tick => {
-                        Cow::Borrowed(raw_value)
-                    }
-                    _ => unreachable!(),
-                };
-
-                let default = if pair_value.is_empty() {
-                    None
-                } else {
-                    Some(pair_value)
-                };
-
-                let secret = directive.map(|directive| {
-                    let mut pairs = directive.into_inner();
-                    let inner_directive = pairs.next().expect("should have inner directive");
-
-                    let config = match inner_directive.as_rule() {
-                        Rule::aws_sm_directive => SecretProviderConfig::AwsSm(
-                            inner_directive
-                                .into_inner()
-                                .next()
-                                .expect("should have value")
-                                .as_str(),
-                        ),
-                        Rule::aws_ps_directive => SecretProviderConfig::AwsPs(
-                            inner_directive
-                                .into_inner()
-                                .next()
-                                .expect("should have value")
-                                .as_str(),
-                        ),
+        for line in file.into_inner() {
+            match line.as_rule() {
+                Rule::declaration => {
+                    let mut pairs = line.into_inner();
+                    let (directive, pair) = match (pairs.next(), pairs.next()) {
+                        (Some(directive), Some(pair)) => (Some(directive), pair),
+                        (Some(pair), None) => (None, pair),
                         _ => unreachable!(),
                     };
 
-                    let optional_indicator = pairs.next();
+                    let mut pairs = pair.into_inner();
 
-                    SecretConfig {
-                        required: optional_indicator.is_none(),
+                    let pair_ident = pairs.next().expect("should have pair_ident").as_str();
+                    let pair_value = pairs
+                        .next()
+                        .expect("should have pair_value")
+                        .into_inner()
+                        .next()
+                        .expect("should have inner value");
+
+                    let raw_value = pair_value.as_str();
+
+                    let pair_value = match pair_value.as_rule() {
+                        Rule::pair_value_dquote if raw_value.contains("\\\"") => {
+                            raw_value.replace("\\\"", "\"")
+                        }
+                        Rule::pair_value_squote if raw_value.contains("\\'") => {
+                            raw_value.replace("\\'", "'")
+                        }
+                        Rule::pair_value_tick if raw_value.contains("\\`") => {
+                            raw_value.replace("\\`", "`")
+                        }
+                        Rule::pair_value_raw => raw_value.trim().to_owned(),
+                        Rule::pair_value_squote
+                        | Rule::pair_value_dquote
+                        | Rule::pair_value_tick => raw_value.to_owned(),
+                        _ => unreachable!(),
+                    };
+
+                    let default = if pair_value.is_empty() {
+                        None
+                    } else {
+                        Some(pair_value)
+                    };
+
+                    let (required, config) = match directive {
+                        Some(directive) => {
+                            let mut pairs = directive.into_inner();
+                            let inner_directive =
+                                pairs.next().expect("should have inner directive");
+
+                            let config = match inner_directive.as_rule() {
+                                Rule::aws_sm_directive => ProviderConfig::AwsSecretsManager(
+                                    inner_directive
+                                        .into_inner()
+                                        .next()
+                                        .expect("should have value")
+                                        .to_string(),
+                                ),
+                                Rule::aws_ps_directive => ProviderConfig::AwsSecretsManager(
+                                    inner_directive
+                                        .into_inner()
+                                        .next()
+                                        .expect("should have value")
+                                        .to_string(),
+                                ),
+                                _ => unreachable!(),
+                            };
+
+                            let optional_indicator = pairs.next();
+
+                            (optional_indicator.is_none(), Some(config))
+                        }
+                        None => (true, None),
+                    };
+
+                    let variable = Variable {
+                        key: pair_ident.to_owned(),
+                        required,
+                        default,
                         provider_config: config,
-                    }
-                });
+                        ..Default::default()
+                    };
 
-                let entry = EnvEntry {
-                    key: pair_ident,
-                    value: default,
-                    secret,
-                };
-
-                if entries.contains_key(pair_ident) {
-                    eprintln!("Warning: Duplicate declaration for {pair_ident}");
+                    variables.push(variable);
                 }
-
-                entries.insert(pair_ident, entry);
+                Rule::EOI => (),
+                _ => unreachable!(),
             }
-            Rule::EOI => (),
-            _ => unreachable!(),
         }
-    }
 
-    Ok(entries.into_values().collect())
+        Ok(variables)
+    }
 }
 
 #[cfg(test)]
@@ -182,14 +153,15 @@ mod tests {
         let input = r#"
             KEY1=value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: None
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                ..Default::default()
             }]
         )
     }
@@ -199,14 +171,15 @@ mod tests {
         let input = r#"
             KEY1:value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: None
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                ..Default::default()
             }]
         )
     }
@@ -217,20 +190,22 @@ mod tests {
             KEY1=value1
             KEY2=value2
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Borrowed("value1")),
-                    secret: None
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("value1".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: Some(Cow::Borrowed("value2")),
-                    secret: None
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    default: Some("value2".to_owned()),
+                    ..Default::default()
                 }
             ]
         )
@@ -241,14 +216,15 @@ mod tests {
         let input = r#"
             export KEY1=value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: None
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                ..Default::default()
             }]
         )
     }
@@ -259,17 +235,16 @@ mod tests {
             # @aws-sm foobar/123
             KEY1=value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig {
-                    required: true,
-                    provider_config: SecretProviderConfig::AwsSm("foobar/123")
-                })
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
+                ..Default::default()
             }]
         )
     }
@@ -280,17 +255,16 @@ mod tests {
             # @aws-ps foobar/123
             KEY1=value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig {
-                    required: true,
-                    provider_config: SecretProviderConfig::AwsPs("foobar/123")
-                })
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                provider_config: Some(ProviderConfig::AwsParameterStore("foobar/123".to_owned())),
+                ..Default::default()
             }]
         )
     }
@@ -301,17 +275,16 @@ mod tests {
             # @aws-ps foobar/123 @optional
             KEY1=value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig {
-                    required: false,
-                    provider_config: SecretProviderConfig::AwsPs("foobar/123")
-                })
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: false,
+                default: Some("value1".to_owned()),
+                provider_config: Some(ProviderConfig::AwsParameterStore("foobar/123".to_owned())),
+                ..Default::default()
             }]
         )
     }
@@ -325,26 +298,28 @@ mod tests {
             # @aws-sm barbaz/456
             KEY2=value2
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Borrowed("value1")),
-                    secret: Some(SecretConfig {
-                        required: true,
-                        provider_config: SecretProviderConfig::AwsSm("foobar/123")
-                    })
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("value1".to_owned()),
+                    provider_config: Some(ProviderConfig::AwsSecretsManager(
+                        "foobar/123".to_owned()
+                    )),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: Some(Cow::Borrowed("value2")),
-                    secret: Some(SecretConfig {
-                        required: true,
-                        provider_config: SecretProviderConfig::AwsSm("barbaz/456")
-                    })
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    default: Some("value2".to_owned()),
+                    provider_config: Some(ProviderConfig::AwsSecretsManager(
+                        "barbaz/456".to_owned()
+                    )),
+                    ..Default::default()
                 }
             ]
         )
@@ -356,17 +331,16 @@ mod tests {
             #    @aws-sm     foobar/123
             KEY1 =   value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig {
-                    required: true,
-                    provider_config: SecretProviderConfig::AwsSm("foobar/123")
-                })
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
+                ..Default::default()
             },]
         )
     }
@@ -378,17 +352,16 @@ mod tests {
             # test
             KEY1=value1
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("value1")),
-                secret: Some(SecretConfig {
-                    required: true,
-                    provider_config: SecretProviderConfig::AwsSm("foobar/123")
-                })
+            *result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
+                ..Default::default()
             }]
         )
     }
@@ -404,26 +377,28 @@ mod tests {
             KEY2=value2
             # test
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Borrowed("value1")),
-                    secret: Some(SecretConfig {
-                        required: true,
-                        provider_config: SecretProviderConfig::AwsSm("foobar/123")
-                    })
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("value1".to_owned()),
+                    provider_config: Some(ProviderConfig::AwsSecretsManager(
+                        "foobar/123".to_owned()
+                    )),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: Some(Cow::Borrowed("value2")),
-                    secret: Some(SecretConfig {
-                        required: true,
-                        provider_config: SecretProviderConfig::AwsSm("barbaz/456")
-                    })
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    default: Some("value2".to_owned()),
+                    provider_config: Some(ProviderConfig::AwsSecretsManager(
+                        "barbaz/456".to_owned()
+                    )),
+                    ..Default::default()
                 }
             ]
         )
@@ -437,30 +412,34 @@ mod tests {
             KEY3='value3' # test 123
             KEY4=`value4` # test 123
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Borrowed("value1")),
-                    secret: None
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("value1".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: Some(Cow::Borrowed("value2")),
-                    secret: None
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    default: Some("value2".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY3",
-                    value: Some(Cow::Borrowed("value3")),
-                    secret: None
+                Variable {
+                    key: "KEY3".to_owned(),
+                    required: true,
+                    default: Some("value3".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY4",
-                    value: Some(Cow::Borrowed("value4")),
-                    secret: None
+                Variable {
+                    key: "KEY4".to_owned(),
+                    required: true,
+                    default: Some("value4".to_owned()),
+                    ..Default::default()
                 }
             ]
         )
@@ -473,25 +452,28 @@ mod tests {
             KEY2='val\'ue2'
             KEY3=`val\`ue3`
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Owned("val\"ue1".to_string())),
-                    secret: None
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("val\"ue1".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: Some(Cow::Owned("val'ue2".to_string())),
-                    secret: None
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    default: Some("val'ue2".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY3",
-                    value: Some(Cow::Owned("val`ue3".to_string())),
-                    secret: None
+                Variable {
+                    key: "KEY3".to_owned(),
+                    required: true,
+                    default: Some("val`ue3".to_owned()),
+                    ..Default::default()
                 }
             ]
         )
@@ -502,7 +484,7 @@ mod tests {
         let input = r#"
             KEY1="val"ue1"
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert!(result.is_err())
     }
@@ -512,7 +494,7 @@ mod tests {
         let input = r#"
             KEY1='val'ue1'
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert!(result.is_err())
     }
@@ -522,7 +504,7 @@ mod tests {
         let input = r#"
             KEY1=`val`ue1`
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert!(result.is_err())
     }
@@ -533,40 +515,50 @@ mod tests {
             KEY1=value1
             KEY2=
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Borrowed("value1")),
-                    secret: None
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("value1".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: None,
-                    secret: None
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    ..Default::default()
                 }
             ]
         )
     }
 
     #[test]
-    fn test_overrides_duplicate_keys() {
+    fn test_keeps_duplicate_keys() {
         let input = r#"
             KEY1=value1
             KEY1=overridden
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
-            vec![EnvEntry {
-                key: "KEY1",
-                value: Some(Cow::Borrowed("overridden")),
-                secret: None
-            },]
+            *result.unwrap(),
+            vec![
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("value1".to_owned()),
+                    ..Default::default()
+                },
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("overridden".to_owned()),
+                    ..Default::default()
+                }
+            ]
         )
     }
 
@@ -577,25 +569,28 @@ mod tests {
             KEY2='  val  ue  2  '
             KEY3=`  val  ue  3  `
         "#;
-        let result = parse(&input);
+        let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            result.unwrap(),
+            *result.unwrap(),
             vec![
-                EnvEntry {
-                    key: "KEY1",
-                    value: Some(Cow::Borrowed("  val  ue  1  ")),
-                    secret: None
+                Variable {
+                    key: "KEY1".to_owned(),
+                    required: true,
+                    default: Some("  val  ue  1  ".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY2",
-                    value: Some(Cow::Borrowed("  val  ue  2  ")),
-                    secret: None
+                Variable {
+                    key: "KEY2".to_owned(),
+                    required: true,
+                    default: Some("  val  ue  2  ".to_owned()),
+                    ..Default::default()
                 },
-                EnvEntry {
-                    key: "KEY3",
-                    value: Some(Cow::Borrowed("  val  ue  3  ")),
-                    secret: None
+                Variable {
+                    key: "KEY3".to_owned(),
+                    required: true,
+                    default: Some("  val  ue  3  ".to_owned()),
+                    ..Default::default()
                 }
             ]
         )

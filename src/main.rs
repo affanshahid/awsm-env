@@ -17,7 +17,7 @@ use clap::Parser;
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let vars = args.vars();
+    let extra_vars = args.vars();
     let placeholders = args.placeholders();
 
     let input = fs::read_to_string(args.spec).context("Failed to read specification file")?;

@@ -9,10 +9,7 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value};
 use toml::Table;
 
-use crate::{
-    error::{Error, IoError, SerdeError, TomlDeError, TomlSerError},
-    parse,
-};
+use crate::error::{Error, IoError, SerdeError, TomlDeError, TomlSerError};
 
 /// By implementing `Output` a type provides a way to format an [`IndexMap`]
 /// of key value pairs and to load existing values back from a file in that format.
