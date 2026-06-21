@@ -5,7 +5,7 @@ use pest_derive::Parser;
 
 #[derive(Parser)]
 #[grammar = "env.pest"]
-struct EnvParser;
+pub struct EnvParser;
 
 impl EnvParser {
     /// Parses a string representing the contents of

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::providers::{AwsParameterStoreProvider, AwsSecretsManagerProvider, Provider};
+use crate::provider::{AwsParameterStoreProvider, AwsSecretsManagerProvider, Provider};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProviderConfig {

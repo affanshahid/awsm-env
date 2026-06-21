@@ -6,7 +6,7 @@ pub mod cli;
 mod error;
 mod output;
 mod parser;
-mod providers;
+mod provider;
 mod variable;
 
 use std::{borrow::Cow, sync::OnceLock};
