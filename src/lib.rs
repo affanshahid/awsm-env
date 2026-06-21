@@ -7,6 +7,7 @@ mod error;
 mod output;
 mod parser;
 mod provider;
+mod resolve;
 mod variable;
 
 use std::{borrow::Cow, sync::OnceLock};

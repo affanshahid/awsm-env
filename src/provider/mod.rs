@@ -13,10 +13,5 @@ pub struct ResolvedSecret<T> {
 
 /// A type that implements `Provider` allows provision of secret configurations
 pub trait Provider {
-    type Config;
-
-    async fn provide_secrets(
-        &self,
-        configs: Vec<Self::Config>,
-    ) -> Result<Vec<ResolvedSecret<Self::Config>>>;
+    async fn provide_secrets(&self, configs: Vec<String>) -> Result<Vec<ResolvedSecret<String>>>;
 }

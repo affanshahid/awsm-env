@@ -1,11 +1,9 @@
 use std::ops::Deref;
 
-use crate::provider::{AwsParameterStoreProvider, AwsSecretsManagerProvider, Provider};
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProviderConfig {
-    AwsSecretsManager(<AwsSecretsManagerProvider as Provider>::Config),
-    AwsParameterStore(<AwsParameterStoreProvider as Provider>::Config),
+    AwsSecretsManager(String),
+    AwsParameterStore(String),
 }
 
 /// Represents a single environment variable binding

@@ -17,8 +17,6 @@ impl AwsSecretsManagerProvider {
 }
 
 impl Provider for AwsSecretsManagerProvider {
-    type Config = String;
-
     // All the expects are because the AWS SDK isn't idiomatic
     async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret<String>>> {
         let mut result = Vec::new();
