@@ -2,8 +2,9 @@ use std::{
     borrow::Cow,
     fs::{self, File},
     io::{self, Write},
-    process::ExitCode,
 };
+
+use anyhow::{Context, Result};
 
 use awsm_env::{
     ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, Output, ShellOutput,
@@ -13,27 +14,14 @@ use awsm_env::{
 use clap::Parser;
 
 #[tokio::main]
-async fn main() -> ExitCode {
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     let vars = args.vars();
     let placeholders = args.placeholders();
 
-    let input = match fs::read_to_string(args.spec) {
-        Ok(file) => file,
-        Err(err) => {
-            eprintln!("Error reading specification file: {}", err);
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let mut input_entries = match parse(&input) {
-        Ok(entries) => entries,
-        Err(err) => {
-            eprintln!("Error parsing file: {}", err);
-            return ExitCode::FAILURE;
-        }
-    };
+    let input = fs::read_to_string(args.spec).context("Failed to read specification file")?;
+    let mut input_entries = parse(&input).context("Failed to parse file")?;
 
     if args.no_defaults {
         for entry in input_entries.iter_mut() {
@@ -49,37 +37,20 @@ async fn main() -> ExitCode {
         Format::Codex => Box::new(CodexOutput::new(args.output.clone())),
     };
 
-    let output_entries = match process_entries(input_entries, &vars, &placeholders).await {
-        Ok(entries) => entries,
-        Err(err) => {
-            eprintln!("Error fetching secrets: {}", err);
-            return ExitCode::FAILURE;
-        }
-    };
+    let output_entries = process_entries(input_entries, &vars, &placeholders)
+        .await
+        .context("Failed to fetch secrets")?;
 
-    let existing = if let Some(ref out) = args.output {
-        match out.try_exists() {
-            Ok(true) => match File::open(out) {
-                Ok(file) => match outputter.load_existing(file) {
-                    Ok(existing) => Some(existing),
-                    Err(err) => {
-                        eprintln!("Error loading existing output file: {}", err);
-                        return ExitCode::FAILURE;
-                    }
-                },
-                Err(err) => {
-                    eprintln!("Error opening existing output file: {}", err);
-                    return ExitCode::FAILURE;
-                }
-            },
-            Ok(false) => None,
-            Err(err) => {
-                eprintln!("Error checking if output file exists: {}", err);
-                return ExitCode::FAILURE;
-            }
+    let existing = match args.output {
+        Some(ref out) if out.try_exists().context("Failed to check output file")? => {
+            let file = File::open(out).context("Failed to open existing output file")?;
+            Some(
+                outputter
+                    .load_existing(file)
+                    .context("Failed to load values from existing output file")?,
+            )
         }
-    } else {
-        None
+        _ => None,
     };
 
     let merged_entries = if let Some(existing) = existing {
@@ -91,32 +62,21 @@ async fn main() -> ExitCode {
             .collect()
     };
 
-    let output = match outputter.format(&merged_entries) {
-        Ok(output) => output,
-        Err(err) => {
-            eprintln!("Error formatting output: {}", err);
-            return ExitCode::FAILURE;
-        }
-    };
+    let output = outputter
+        .format(&merged_entries)
+        .context("Failed to format output")?;
 
-    let result = match args.output {
+    match args.output {
         Some(path) => {
             if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-                if let Err(err) = fs::create_dir_all(parent) {
-                    eprintln!("Error creating output directory: {}", err);
-                    return ExitCode::FAILURE;
-                }
+                fs::create_dir_all(parent).context("Failed to create parent directory")?;
             }
-            fs::write(path, output.as_bytes())
+            fs::write(path, output.as_bytes()).context("writing to file")?
         }
-        None => io::stdout().write_all(output.as_bytes()),
+        None => io::stdout()
+            .write_all(output.as_bytes())
+            .context("writing to file")?,
     };
 
-    match result {
-        Ok(_) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("Error writing output: {}", err);
-            ExitCode::FAILURE
-        }
-    }
+    Ok(())
 }
