@@ -65,7 +65,13 @@ pub async fn resolve(
         for secret in resolved {
             let var = group
                 .iter_mut()
-                .find(|v| v.key == secret.id)
+                .find(|v| {
+                    v.provider_config
+                        .as_ref()
+                        .expect("Expected nones to be filtered out")
+                        .id()
+                        == secret.id
+                })
                 .expect("Expected matching variable");
 
             var.value = Some(secret.secret);
