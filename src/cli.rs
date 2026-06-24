@@ -14,8 +14,13 @@ pub enum Format {
 
 #[derive(ValueEnum, Clone, Eq, PartialEq)]
 pub enum MergeMode {
+    /// Overwrite the existing file with the new output
     Overwrite,
+
+    /// Use the existing file as a fallback for missing keys in the new output
     Fallback,
+
+    /// Use the new output as a fallback for missing keys in the existing file
     Override,
 }
 

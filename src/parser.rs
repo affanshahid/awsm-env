@@ -23,7 +23,7 @@ impl EnvParser {
     /// let result = EnvParser::parse_variables(input);
     ///
     /// assert_eq!(
-    ///     *result.unwrap(),
+    ///     result.unwrap(),
     ///     vec![
     ///         Variable {
     ///             key: "KEY1".to_owned(),
@@ -40,6 +40,7 @@ impl EnvParser {
     ///             ..Default::default()
     ///         }
     ///     ]
+    ///     .into()
     /// )
     /// ```
     pub fn parse_variables(input: &str) -> Result<Variables> {
@@ -106,14 +107,16 @@ impl EnvParser {
                                         .into_inner()
                                         .next()
                                         .expect("should have value")
-                                        .to_string(),
+                                        .as_str()
+                                        .to_owned(),
                                 ),
-                                Rule::aws_ps_directive => ProviderConfig::AwsSecretsManager(
+                                Rule::aws_ps_directive => ProviderConfig::AwsParameterStore(
                                     inner_directive
                                         .into_inner()
                                         .next()
                                         .expect("should have value")
-                                        .to_string(),
+                                        .as_str()
+                                        .to_owned(),
                                 ),
                                 _ => unreachable!(),
                             };
@@ -133,7 +136,14 @@ impl EnvParser {
                         ..Default::default()
                     };
 
-                    variables.push(variable);
+                    if variables.find_by_key(pair_ident).is_some() {
+                        eprintln!(
+                            "Warning: Duplicate variable declaration for key '{}'.",
+                            pair_ident
+                        );
+                    }
+
+                    variables.insert(variable);
                 }
                 Rule::EOI => (),
                 _ => unreachable!(),
@@ -156,13 +166,14 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
                 default: Some("value1".to_owned()),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -174,13 +185,14 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
                 default: Some("value1".to_owned()),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -193,7 +205,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -208,6 +220,7 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 
@@ -219,13 +232,14 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
                 default: Some("value1".to_owned()),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -238,7 +252,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
@@ -246,6 +260,7 @@ mod tests {
                 provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -258,7 +273,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
@@ -266,6 +281,7 @@ mod tests {
                 provider_config: Some(ProviderConfig::AwsParameterStore("foobar/123".to_owned())),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -278,7 +294,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: false,
@@ -286,6 +302,7 @@ mod tests {
                 provider_config: Some(ProviderConfig::AwsParameterStore("foobar/123".to_owned())),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -301,7 +318,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -322,6 +339,7 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 
@@ -334,7 +352,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
@@ -342,6 +360,7 @@ mod tests {
                 provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
                 ..Default::default()
             },]
+            .into()
         )
     }
 
@@ -355,7 +374,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![Variable {
                 key: "KEY1".to_owned(),
                 required: true,
@@ -363,6 +382,7 @@ mod tests {
                 provider_config: Some(ProviderConfig::AwsSecretsManager("foobar/123".to_owned())),
                 ..Default::default()
             }]
+            .into()
         )
     }
 
@@ -380,7 +400,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -401,6 +421,7 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 
@@ -415,7 +436,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -442,6 +463,7 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 
@@ -455,7 +477,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -476,6 +498,7 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 
@@ -518,7 +541,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -532,11 +555,12 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 
     #[test]
-    fn test_keeps_duplicate_keys() {
+    fn test_removes_duplicate_keys() {
         let input = r#"
             KEY1=value1
             KEY1=overridden
@@ -544,21 +568,14 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
-            vec![
-                Variable {
-                    key: "KEY1".to_owned(),
-                    required: true,
-                    default: Some("value1".to_owned()),
-                    ..Default::default()
-                },
-                Variable {
-                    key: "KEY1".to_owned(),
-                    required: true,
-                    default: Some("overridden".to_owned()),
-                    ..Default::default()
-                }
-            ]
+            result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("overridden".to_owned()),
+                ..Default::default()
+            }]
+            .into()
         )
     }
 
@@ -572,7 +589,7 @@ mod tests {
         let result = EnvParser::parse_variables(input);
 
         assert_eq!(
-            *result.unwrap(),
+            result.unwrap(),
             vec![
                 Variable {
                     key: "KEY1".to_owned(),
@@ -593,6 +610,7 @@ mod tests {
                     ..Default::default()
                 }
             ]
+            .into()
         )
     }
 }

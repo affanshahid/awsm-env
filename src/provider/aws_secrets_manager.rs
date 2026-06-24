@@ -18,7 +18,7 @@ impl AwsSecretsManagerProvider {
 
 impl Provider for AwsSecretsManagerProvider {
     // All the expects are because the AWS SDK isn't idiomatic
-    async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret<String>>> {
+    async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret>> {
         let mut result = Vec::new();
 
         for chunk in &ids.into_iter().chunks(20) {
@@ -46,7 +46,7 @@ impl Provider for AwsSecretsManagerProvider {
                     .expect("should have secrets if there were no ResourceNotFound errors")
                     .into_iter()
                     .map(|s| ResolvedSecret {
-                        config: s.name.expect("should have a name"),
+                        id: s.name.expect("should have a name"),
                         secret: s.secret_string.expect("should have a secret string"),
                     }),
             );

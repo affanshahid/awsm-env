@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     fs::{self, File},
     io,
     path::PathBuf,
@@ -9,95 +8,93 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value};
 use toml::Table;
 
-use crate::error::{Error, IoError, SerdeError, TomlDeError, TomlSerError};
+use crate::{parser::EnvParser, variable::Variables};
+
+use anyhow::Result;
 
 /// By implementing `Output` a type provides a way to format an [`IndexMap`]
 /// of key value pairs and to load existing values back from a file in that format.
 pub trait Output {
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error>;
-    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error>;
+    fn format(&self, variables: Variables) -> Result<String>;
+    fn load_existing(&self, file: File) -> Result<Variables>;
 }
 
-/// Formats environment entries into `.env` format using [`EnvOutput::format`]
+/// Formats environment variables into `.env` format using [`EnvOutput::format`]
 pub struct EnvOutput;
 
 impl Output for EnvOutput {
-    /// Formats environment entries into `.env` format
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
+    /// Formats environment variables into `.env` format
+    fn format(&self, variables: Variables) -> Result<String> {
         let mut output = String::new();
 
-        for (key, value) in entries {
+        for var in variables {
             output.push_str(&format!(
                 "{}={}\n",
-                key,
-                serde_json::to_string(&value).expect("should be able to JSONify string")
+                var.key,
+                serde_json::to_string(&var.value)?
             ));
         }
 
         Ok(output)
     }
 
-    /// Loads existing environment entries from a file in `.env` format
-    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
-        let input = io::read_to_string(file).map_err(IoError::from)?;
-        let input_entries = parse(&input)?;
-        Ok(input_entries
-            .into_iter()
-            .filter_map(|e| e.value.map(|v| (e.key.to_string(), v.to_string())))
-            .collect())
+    /// Loads existing environment variables from a file in `.env` format
+    fn load_existing(&self, file: File) -> Result<Variables> {
+        let input = io::read_to_string(file)?;
+        let mut variables = EnvParser::parse_variables(&input)?;
+        variables.iter_mut().for_each(|v| v.promote_default());
+        Ok(variables)
     }
 }
 
-/// Formats environment entries into shell variable export commands using [`ShellOutput::format`]
+/// Formats environment variables into shell variable export commands using [`ShellOutput::format`]
 pub struct ShellOutput;
 
 impl Output for ShellOutput {
-    /// Formats environment entries into shell variable export commands
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
+    /// Formats environment variables into shell variable export commands
+    fn format(&self, variables: Variables) -> Result<String> {
         let mut output = String::new();
 
-        for (key, value) in entries {
+        for var in variables {
             output.push_str(&format!(
                 "export {}={}\n",
-                key,
-                serde_json::to_string(&value).expect("should be able to JSONify string")
+                var.key,
+                serde_json::to_string(&var.value)?
             ));
         }
 
         Ok(output)
     }
 
-    /// Loads existing environment entries from a file in shell variable export command format
-    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
-        let input = io::read_to_string(file).map_err(IoError::from)?;
-
-        let input_entries = parse(&input)?;
-        Ok(input_entries
-            .into_iter()
-            .filter_map(|e| e.value.map(|v| (e.key.to_string(), v.to_string())))
-            .collect())
+    /// Loads existing environment variables from a file in shell variable export command format
+    fn load_existing(&self, file: File) -> Result<Variables> {
+        let input = io::read_to_string(file)?;
+        let mut variables = EnvParser::parse_variables(&input)?;
+        variables.iter_mut().for_each(|v| v.promote_default());
+        Ok(variables)
     }
 }
 
-/// Formats environment entries into JSON using [`JsonOutput::format`]
+/// Formats environment variables into JSON using [`JsonOutput::format`]
 pub struct JsonOutput;
 
 impl Output for JsonOutput {
-    /// Formats environment entries into JSON of the form `{"KEY": "value"}`
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
-        Ok(serde_json::to_string(entries).expect("IndexMap should be serialized to JSON") + "\n")
+    /// Formats environment variables into JSON of the form `{"KEY": "value"}`
+    fn format(&self, variables: Variables) -> Result<String> {
+        let map: IndexMap<_, _> = variables.into();
+        Ok(serde_json::to_string(&map)? + "\n")
     }
 
-    /// Loads existing environment entries from a JSON file
-    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
-        let input = io::read_to_string(file).map_err(IoError::from)?;
-        let obj = serde_json::from_str(&input).map_err(SerdeError::from)?;
+    /// Loads existing environment variables from a JSON file
+    fn load_existing(&self, file: File) -> Result<Variables> {
+        let input = io::read_to_string(file)?;
+        let obj: IndexMap<_, _> = serde_json::from_str(&input)?;
 
-        Ok(obj)
+        Ok(obj.into())
     }
 }
 
-/// Formats environment entries into Claude Code's settings file format using [`ClaudeOutput::format`]
+/// Formats environment variables into Claude Code's settings file format using [`ClaudeOutput::format`]
 pub struct ClaudeOutput {
     path: PathBuf,
 }
@@ -111,40 +108,37 @@ impl ClaudeOutput {
 }
 
 impl Output for ClaudeOutput {
-    /// Formats environment entries into Claude Code's settings file format of the form `{"env": {"KEY": "value"}}`
+    /// Formats environment variables into Claude Code's settings file format of the form `{"env": {"KEY": "value"}}`
     /// Preserves other existing settings
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
-        let mut map = match self.path.try_exists().map_err(IoError::from)? {
+    fn format(&self, variables: Variables) -> Result<String> {
+        let mut map = match self.path.try_exists()? {
             true => {
-                let input = fs::read_to_string(&self.path).map_err(IoError::from)?;
-                let obj: Value = serde_json::from_str(&input).map_err(SerdeError::from)?;
-                serde_json::from_value(obj).map_err(SerdeError::from)?
+                let input = fs::read_to_string(&self.path)?;
+                let obj: Value = serde_json::from_str(&input)?;
+                serde_json::from_value(obj)?
             }
             false => Map::new(),
         };
-        map.insert(
-            "env".to_string(),
-            serde_json::to_value(entries).map_err(SerdeError::from)?,
-        );
+        let env_map: IndexMap<_, _> = variables.into();
+        map.insert("env".to_string(), serde_json::to_value(env_map)?);
 
-        Ok(serde_json::to_string_pretty(&map).map_err(SerdeError::from)?)
+        Ok(serde_json::to_string_pretty(&map)?)
     }
 
-    /// Loads existing environment entries from a Claude Code settings file
-    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
-        let input = io::read_to_string(file).map_err(IoError::from)?;
-        let mut obj: Value = serde_json::from_str(&input).map_err(SerdeError::from)?;
+    /// Loads existing environment variables from a Claude Code settings file
+    fn load_existing(&self, file: File) -> Result<Variables> {
+        let input = io::read_to_string(file)?;
+        let mut obj: Value = serde_json::from_str(&input)?;
         let env = obj
             .as_object_mut()
             .and_then(|o| o.remove("env"))
             .unwrap_or(Value::Object(Map::new()));
-        let env = serde_json::from_value(env).map_err(SerdeError::from)?;
-
-        Ok(env)
+        let env: IndexMap<_, _> = serde_json::from_value(env)?;
+        Ok(env.into())
     }
 }
 
-/// Formats environment entries into Codex CLI's `config.toml` format using [`CodexOutput::format`]
+/// Formats environment variables into Codex CLI's `config.toml` format using [`CodexOutput::format`]
 pub struct CodexOutput {
     path: PathBuf,
 }
@@ -158,13 +152,13 @@ impl CodexOutput {
 }
 
 impl Output for CodexOutput {
-    /// Formats environment entries under `[shell_environment_policy.set]` in Codex's
+    /// Formats environment variables under `[shell_environment_policy.set]` in Codex's
     /// `config.toml`. Preserves other existing settings; replaces the whole `set` table.
-    fn format(&self, entries: &IndexMap<Cow<str>, Cow<str>>) -> Result<String, Error> {
-        let mut map: Table = match self.path.try_exists().map_err(IoError::from)? {
+    fn format(&self, variables: Variables) -> Result<String> {
+        let mut map: Table = match self.path.try_exists()? {
             true => {
-                let input = fs::read_to_string(&self.path).map_err(IoError::from)?;
-                toml::from_str(&input).map_err(TomlDeError::from)?
+                let input = fs::read_to_string(&self.path)?;
+                toml::from_str(&input)?
             }
             false => Table::new(),
         };
@@ -174,29 +168,27 @@ impl Output for CodexOutput {
             .and_then(|v| v.try_into().ok())
             .unwrap_or_default();
 
-        policy.insert(
-            "set".to_string(),
-            toml::Value::try_from(entries).map_err(TomlSerError::from)?,
-        );
+        let env_map: IndexMap<_, _> = variables.into();
+
+        policy.insert("set".to_string(), toml::Value::try_from(env_map)?);
         map.insert("shell_environment_policy".to_string(), policy.into());
 
-        Ok(toml::to_string_pretty(&map).map_err(TomlSerError::from)?)
+        Ok(toml::to_string_pretty(&map)?)
     }
 
-    /// Loads existing environment entries from a Codex `config.toml` file
-    fn load_existing(&self, file: File) -> Result<IndexMap<String, String>, Error> {
-        let input = io::read_to_string(file).map_err(IoError::from)?;
-        let mut obj: Table = toml::from_str(&input).map_err(TomlDeError::from)?;
-        let set = obj
+    /// Loads existing environment variables from a Codex `config.toml` file
+    fn load_existing(&self, file: File) -> Result<Variables> {
+        let input = io::read_to_string(file)?;
+        let mut obj: Table = toml::from_str(&input)?;
+        let set: IndexMap<_, _> = obj
             .remove("shell_environment_policy")
             .and_then(|v| v.try_into::<Table>().ok())
             .and_then(|mut t| t.remove("set"))
             .map(|v| v.try_into())
-            .transpose()
-            .map_err(TomlDeError::from)?
+            .transpose()?
             .unwrap_or_default();
 
-        Ok(set)
+        Ok(set.into())
     }
 }
 
@@ -206,37 +198,30 @@ mod tests {
 
     use super::*;
 
+    /// Builds a [`Variables`] from key/value pairs (each becomes a variable with a `value`).
+    fn variables(pairs: &[(&str, &str)]) -> Variables {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<IndexMap<String, String>>()
+            .into()
+    }
+
     #[test]
     fn test_env_output() {
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
-        input.insert(
-            Cow::Owned("KEY2".to_string()),
-            Cow::Owned("val\"ue2".to_string()),
-        );
+        let input = variables(&[("KEY1", "value1"), ("KEY2", "val\"ue2")]);
 
         let output = EnvOutput;
-        let result = output.format(&input).unwrap();
+        let result = output.format(input).unwrap();
         assert_eq!(result, "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n")
     }
 
     #[test]
     fn test_shell_output() {
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
-        input.insert(
-            Cow::Owned("KEY2".to_string()),
-            Cow::Owned("val\"ue2".to_string()),
-        );
+        let input = variables(&[("KEY1", "value1"), ("KEY2", "val\"ue2")]);
 
         let output = ShellOutput;
-        let result = output.format(&input).unwrap();
+        let result = output.format(input).unwrap();
         assert_eq!(
             result,
             "export KEY1=\"value1\"\nexport KEY2=\"val\\\"ue2\"\n"
@@ -245,22 +230,18 @@ mod tests {
 
     #[test]
     fn test_json_output() {
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
-        input.insert(
-            Cow::Owned("KEY2".to_string()),
-            Cow::Owned("val\"ue2".to_string()),
-        );
+        let pairs = [("KEY1", "value1"), ("KEY2", "val\"ue2")];
 
         let output = JsonOutput;
-        let result = output.format(&input).unwrap();
+        let result = output.format(variables(&pairs)).unwrap();
 
+        let expected: IndexMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&result).unwrap(),
-            serde_json::to_value(input).unwrap()
+            serde_json::to_value(expected).unwrap()
         )
     }
 
@@ -275,6 +256,7 @@ mod tests {
         let path = write_temp("env_load.env", "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n");
 
         let result = EnvOutput.load_existing(File::open(&path).unwrap()).unwrap();
+        let result: IndexMap<String, String> = result.into();
 
         let mut expected = IndexMap::new();
         expected.insert("KEY1".to_string(), "value1".to_string());
@@ -294,6 +276,7 @@ mod tests {
         let result = ShellOutput
             .load_existing(File::open(&path).unwrap())
             .unwrap();
+        let result: IndexMap<String, String> = result.into();
 
         let mut expected = IndexMap::new();
         expected.insert("KEY1".to_string(), "value1".to_string());
@@ -313,6 +296,7 @@ mod tests {
         let result = JsonOutput
             .load_existing(File::open(&path).unwrap())
             .unwrap();
+        let result: IndexMap<String, String> = result.into();
 
         let mut expected = IndexMap::new();
         expected.insert("KEY1".to_string(), "value1".to_string());
@@ -327,18 +311,10 @@ mod tests {
         let path = std::env::temp_dir().join("awsm_env_test_claude_new.json");
         let _ = fs::remove_file(&path);
 
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
-        input.insert(
-            Cow::Owned("KEY2".to_string()),
-            Cow::Owned("val\"ue2".to_string()),
-        );
+        let input = variables(&[("KEY1", "value1"), ("KEY2", "val\"ue2")]);
 
         let output = ClaudeOutput::new(Some(path.clone()));
-        let result = output.format(&input).unwrap();
+        let result = output.format(input).unwrap();
 
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["env"]["KEY1"], "value1");
@@ -352,14 +328,10 @@ mod tests {
             r#"{"other":"keep","env":{"OLD":"x"}}"#,
         );
 
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
+        let input = variables(&[("KEY1", "value1")]);
 
         let output = ClaudeOutput::new(Some(path.clone()));
-        let result = output.format(&input).unwrap();
+        let result = output.format(input).unwrap();
 
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["other"], "keep");
@@ -378,6 +350,7 @@ mod tests {
 
         let output = ClaudeOutput::new(Some(path.clone()));
         let result = output.load_existing(File::open(&path).unwrap()).unwrap();
+        let result: IndexMap<String, String> = result.into();
 
         let mut expected = IndexMap::new();
         expected.insert("KEY1".to_string(), "value1".to_string());
@@ -404,18 +377,10 @@ mod tests {
         let path = std::env::temp_dir().join("awsm_env_test_codex_new.toml");
         let _ = fs::remove_file(&path);
 
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
-        input.insert(
-            Cow::Owned("KEY2".to_string()),
-            Cow::Owned("val\"ue2".to_string()),
-        );
+        let input = variables(&[("KEY1", "value1"), ("KEY2", "val\"ue2")]);
 
         let output = CodexOutput::new(Some(path.clone()));
-        let result = output.format(&input).unwrap();
+        let result = output.format(input).unwrap();
 
         let parsed: toml::Table = toml::from_str(&result).unwrap();
         let set = parsed["shell_environment_policy"]["set"]
@@ -432,14 +397,10 @@ mod tests {
             "model = \"gpt-5\"\n\n[shell_environment_policy]\ninherit = \"core\"\n\n[shell_environment_policy.set]\nOLD = \"x\"\n",
         );
 
-        let mut input = IndexMap::new();
-        input.insert(
-            Cow::Owned("KEY1".to_string()),
-            Cow::Owned("value1".to_string()),
-        );
+        let input = variables(&[("KEY1", "value1")]);
 
         let output = CodexOutput::new(Some(path.clone()));
-        let result = output.format(&input).unwrap();
+        let result = output.format(input).unwrap();
 
         let parsed: toml::Table = toml::from_str(&result).unwrap();
         assert_eq!(parsed["model"].as_str().unwrap(), "gpt-5");
@@ -467,6 +428,7 @@ mod tests {
 
         let output = CodexOutput::new(Some(path.clone()));
         let result = output.load_existing(File::open(&path).unwrap()).unwrap();
+        let result: IndexMap<String, String> = result.into();
 
         let mut expected = IndexMap::new();
         expected.insert("KEY1".to_string(), "value1".to_string());

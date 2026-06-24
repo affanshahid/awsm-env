@@ -18,7 +18,7 @@ impl AwsParameterStoreProvider {
 
 impl Provider for AwsParameterStoreProvider {
     // All the expects are because the AWS SDK isn't idiomatic
-    async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret<String>>> {
+    async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret>> {
         let mut result = Vec::new();
 
         for chunk in &ids.into_iter().chunks(10) {
@@ -35,7 +35,7 @@ impl Provider for AwsParameterStoreProvider {
                     .expect("should have parameters")
                     .into_iter()
                     .map(|p| ResolvedSecret {
-                        config: p.name.expect("should have name"),
+                        id: p.name.expect("should have name"),
                         secret: p.value.expect("should have value"),
                     }),
             );
