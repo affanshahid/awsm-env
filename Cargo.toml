@@ -1,18 +1,18 @@
 [package]
 name = "awsm-env"
-description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
-authors = ["Affan Shahid <affan.shahid.94@gmail.com>"]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
-homepage = "https://github.com/affanshahid/awsm-env"
+description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
 documentation = "https://docs.rs/awsm-env"
-repository = "https://github.com/affanshahid/awsm-env"
 readme = "README.md"
+homepage = "https://github.com/affanshahid/awsm-env"
+repository = "https://github.com/affanshahid/awsm-env"
 license = "MIT"
-categories = ["command-line-utilities"]
 keywords = ["aws-secrets-manager", "env", "environment-variable"]
+categories = ["command-line-utilities"]
 
 [dependencies]
+anyhow = "1.0.102"
 aws-config = { version = "1.6.1", features = ["behavior-version-latest"] }
 aws-sdk-secretsmanager = "1.68.0"
 aws-sdk-ssm = "1.71.0"
@@ -24,16 +24,19 @@ pest_derive = "2.8.0"
 regex = "1.11.1"
 serde_json = { version = "1.0.140", features = ["preserve_order"] }
 thiserror = "2.0.12"
-toml = { version = "0.8", features = ["preserve_order"] }
 tokio = { version = "1.44.1", features = ["full"] }
-anyhow = "1.0.102"
+toml = { version = "0.8", features = ["preserve_order"] }
 
 [dev-dependencies]
-cargo-husky = { version = "1.5.0", default-features = false, features = [
+cargo-husky = {
+  version = "1.5.0",
+  default-features = false,
+  features = [
     "precommit-hook",
     "run-cargo-check",
     "run-cargo-fmt",
-] }
+  ]
+}
 
 # The profile that 'dist' will build with
 [profile.dist]
