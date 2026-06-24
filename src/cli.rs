@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use indexmap::IndexMap;
 
+use crate::variable::Variables;
+
 #[derive(Clone, ValueEnum)]
 pub enum Format {
     Env,
@@ -62,8 +64,9 @@ impl Args {
         self.placeholders.iter().flatten().cloned().collect()
     }
 
-    pub fn vars(&self) -> IndexMap<String, String> {
-        self.vars.iter().flatten().cloned().collect()
+    pub fn vars(&self) -> Variables {
+        let map: IndexMap<_, _> = self.vars.iter().flatten().cloned().collect();
+        map.into()
     }
 }
 

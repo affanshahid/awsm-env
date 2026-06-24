@@ -6,5 +6,5 @@ pub mod cli;
 pub mod output;
 pub mod parser;
 pub mod provider;
-mod resolve;
+pub mod resolve;
 mod variable;

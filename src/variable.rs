@@ -36,6 +36,10 @@ impl Variable {
         self.default = self.value.take();
     }
 
+    pub fn drop_default(&mut self) {
+        self.default = None;
+    }
+
     pub fn merge(&mut self, mut other: Variable) {
         if self.key != other.key {
             panic!("Cannot merge variables with different keys");

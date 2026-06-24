@@ -77,9 +77,7 @@ pub async fn resolve(
 
 pub fn merge(mut variables: Variables, mut others: Variables, mode: MergeMode) -> Variables {
     match mode {
-        MergeMode::Overwrite => {
-            return variables;
-        }
+        MergeMode::Overwrite => variables,
         MergeMode::Fallback => {
             others.iter_mut().for_each(|o| o.demote_value());
             variables.merge(others);
