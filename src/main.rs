@@ -6,10 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 
-use awsm_env::{
-    ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, Output, ShellOutput,
-    cli::{Args, Format},
-};
+use awsm_env::cli::{Args, Format};
 use clap::Parser;
 
 // #[tokio::main]
