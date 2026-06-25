@@ -14,9 +14,10 @@ pub enum Format {
     Codex,
 }
 
-#[derive(ValueEnum, Clone, Eq, PartialEq)]
+#[derive(ValueEnum, Clone, Eq, PartialEq, Default)]
 pub enum MergeMode {
     /// Overwrite the existing file with the new output
+    #[default]
     Overwrite,
 
     /// Use the existing file as a fallback for missing keys in the new output
@@ -55,7 +56,7 @@ pub struct Args {
     pub no_defaults: bool,
 
     /// Merge mode to use when merging with existing output file. Defaults to `overwrite`.
-    #[arg(long, short, value_enum, default_value_t = MergeMode::Overwrite)]
+    #[arg(long, short, value_enum, default_value_t)]
     pub merge_mode: MergeMode,
 }
 

@@ -147,6 +147,39 @@ mod tests {
     }
 
     #[test]
+    fn test_codex_output_default_fallback() {
+        // The default is used when `value` is missing, and `value` wins when
+        // both the default and value are present.
+        let path = std::env::temp_dir().join("awsm_env_test_codex_default.toml");
+        let _ = fs::remove_file(&path);
+
+        let input: Variables = vec![
+            Variable {
+                key: "ONLY_DEFAULT".to_string(),
+                default: Some("def".to_string()),
+                ..Default::default()
+            },
+            Variable {
+                key: "BOTH".to_string(),
+                default: Some("def".to_string()),
+                value: Some("val".to_string()),
+                ..Default::default()
+            },
+        ]
+        .into();
+
+        let output = CodexOutput::new(Some(path.clone()));
+        let result = output.format(input).unwrap();
+
+        let parsed: toml::Table = toml::from_str(&result).unwrap();
+        let set = parsed["shell_environment_policy"]["set"]
+            .as_table()
+            .unwrap();
+        assert_eq!(set["ONLY_DEFAULT"].as_str().unwrap(), "def");
+        assert_eq!(set["BOTH"].as_str().unwrap(), "val");
+    }
+
+    #[test]
     fn test_codex_load_existing() {
         let path = write_temp(
             "codex_load.toml",

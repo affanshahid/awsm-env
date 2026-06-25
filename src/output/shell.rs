@@ -16,7 +16,7 @@ impl Output for ShellOutput {
             output.push_str(&format!(
                 "export {}={}\n",
                 var.key,
-                serde_json::to_string(&var.value)?
+                serde_json::to_string(&var.value.or(var.default))?
             ));
         }
 
@@ -70,6 +70,29 @@ mod tests {
             result,
             "export KEY1=\"value1\"\nexport KEY2=\"val\\\"ue2\"\n"
         )
+    }
+
+    #[test]
+    fn test_shell_output_default_fallback() {
+        // The default is used when `value` is missing, and `value` wins when
+        // both the default and value are present.
+        let input: Variables = vec![
+            Variable {
+                key: "ONLY_DEFAULT".to_string(),
+                default: Some("def".to_string()),
+                ..Default::default()
+            },
+            Variable {
+                key: "BOTH".to_string(),
+                default: Some("def".to_string()),
+                value: Some("val".to_string()),
+                ..Default::default()
+            },
+        ]
+        .into();
+
+        let result = ShellOutput.format(input).unwrap();
+        assert_eq!(result, "export ONLY_DEFAULT=\"def\"\nexport BOTH=\"val\"\n");
     }
 
     #[test]

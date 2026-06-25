@@ -71,6 +71,37 @@ mod tests {
     }
 
     #[test]
+    fn test_json_output_default_fallback() {
+        // The default is used when `value` is missing, and `value` wins when
+        // both the default and value are present.
+        let input: Variables = vec![
+            Variable {
+                key: "ONLY_DEFAULT".to_string(),
+                default: Some("def".to_string()),
+                ..Default::default()
+            },
+            Variable {
+                key: "BOTH".to_string(),
+                default: Some("def".to_string()),
+                value: Some("val".to_string()),
+                ..Default::default()
+            },
+        ]
+        .into();
+
+        let result = JsonOutput.format(input).unwrap();
+
+        let expected = serde_json::json!({
+            "ONLY_DEFAULT": "def",
+            "BOTH": "val",
+        });
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&result).unwrap(),
+            expected
+        )
+    }
+
+    #[test]
     fn test_json_load_existing() {
         let path = write_temp(
             "json_load.json",

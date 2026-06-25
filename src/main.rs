@@ -53,6 +53,8 @@ async fn main() -> Result<()> {
         _ => variables,
     };
 
+    variables.drop_empty();
+
     let output = outputter
         .format(variables)
         .context("Failed to format output")?;

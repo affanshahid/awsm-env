@@ -125,6 +125,36 @@ mod tests {
     }
 
     #[test]
+    fn test_claude_output_default_fallback() {
+        // The default is used when `value` is missing, and `value` wins when
+        // both the default and value are present.
+        let path = std::env::temp_dir().join("awsm_env_test_claude_default.json");
+        let _ = fs::remove_file(&path);
+
+        let input: Variables = vec![
+            Variable {
+                key: "ONLY_DEFAULT".to_string(),
+                default: Some("def".to_string()),
+                ..Default::default()
+            },
+            Variable {
+                key: "BOTH".to_string(),
+                default: Some("def".to_string()),
+                value: Some("val".to_string()),
+                ..Default::default()
+            },
+        ]
+        .into();
+
+        let output = ClaudeOutput::new(Some(path.clone()));
+        let result = output.format(input).unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["env"]["ONLY_DEFAULT"], "def");
+        assert_eq!(parsed["env"]["BOTH"], "val");
+    }
+
+    #[test]
     fn test_claude_load_existing() {
         let path = write_temp(
             "claude_load.json",

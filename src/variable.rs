@@ -40,6 +40,10 @@ impl Variable {
         self.default = None;
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.value.is_none() && self.default.is_none()
+    }
+
     pub fn merge(&mut self, mut other: Variable) {
         if self.key != other.key {
             panic!("Cannot merge variables with different keys");
@@ -88,6 +92,10 @@ impl Variables {
 
     pub fn iter_mut(&mut self) -> IterMut<'_, Variable> {
         self.0.iter_mut()
+    }
+
+    pub fn drop_empty(&mut self) {
+        self.0.retain(|v| !v.is_empty());
     }
 
     pub fn merge(&mut self, other: Variables) {

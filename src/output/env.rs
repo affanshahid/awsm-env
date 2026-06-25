@@ -16,7 +16,7 @@ impl Output for EnvOutput {
             output.push_str(&format!(
                 "{}={}\n",
                 var.key,
-                serde_json::to_string(&var.value)?
+                serde_json::to_string(&var.value.or(var.default))?
             ));
         }
 
@@ -67,6 +67,29 @@ mod tests {
         let output = EnvOutput;
         let result = output.format(input).unwrap();
         assert_eq!(result, "KEY1=\"value1\"\nKEY2=\"val\\\"ue2\"\n")
+    }
+
+    #[test]
+    fn test_env_output_default_fallback() {
+        // The default is used when `value` is missing, and `value` wins when
+        // both the default and value are present.
+        let input: Variables = vec![
+            Variable {
+                key: "ONLY_DEFAULT".to_string(),
+                default: Some("def".to_string()),
+                ..Default::default()
+            },
+            Variable {
+                key: "BOTH".to_string(),
+                default: Some("def".to_string()),
+                value: Some("val".to_string()),
+                ..Default::default()
+            },
+        ]
+        .into();
+
+        let result = EnvOutput.format(input).unwrap();
+        assert_eq!(result, "ONLY_DEFAULT=\"def\"\nBOTH=\"val\"\n");
     }
 
     #[test]
