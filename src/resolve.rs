@@ -66,10 +66,14 @@ pub async fn resolve(
             let var = group
                 .iter_mut()
                 .find(|v| {
-                    v.provider_config
-                        .as_ref()
-                        .expect("Expected nones to be filtered out")
-                        .id()
+                    replace_placeholders(
+                        v.provider_config
+                            .as_ref()
+                            .expect("Expected nones to be filtered out")
+                            .id(),
+                        &placeholders,
+                    )
+                    .expect("Placholder substitution succeeded earlier")
                         == secret.id
                 })
                 .expect("Expected matching variable");

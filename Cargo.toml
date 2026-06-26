@@ -1,6 +1,6 @@
 [package]
 name = "awsm-env"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 description = "A lightweight utility for syncing AWS Secrets Manager secrets to environment variables."
 documentation = "https://docs.rs/awsm-env"
