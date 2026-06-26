@@ -3,7 +3,7 @@ use std::{
     io::{self, Write},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 use awsm_env::{
     cli::{Args, Format},
@@ -32,6 +32,19 @@ async fn main() -> Result<()> {
         .context("Failed to fetch secrets")?;
 
     variables.merge(extra_vars);
+
+    let missing = variables
+        .iter()
+        .filter(|var| var.value.is_none() && var.required && var.provider_config.is_some())
+        .map(|var| var.key.as_str())
+        .collect::<Vec<_>>();
+
+    if !missing.is_empty() {
+        return Err(anyhow!(
+            "Values not found for required keys: {}",
+            missing.join(", ")
+        ));
+    }
 
     let outputter: Box<dyn Output> = match args.format {
         Format::Env => Box::new(EnvOutput),
