@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 pub enum ProviderConfig {
     AwsSecretsManager(String),
     AwsParameterStore(String),
+    InMemory(String),
 }
 
 impl ProviderConfig {
@@ -13,6 +14,7 @@ impl ProviderConfig {
         match self {
             ProviderConfig::AwsSecretsManager(id) => id,
             ProviderConfig::AwsParameterStore(id) => id,
+            ProviderConfig::InMemory(id) => id,
         }
     }
 }

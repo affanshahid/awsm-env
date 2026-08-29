@@ -1,11 +1,13 @@
 mod aws_parameter_store;
 mod aws_secrets_manager;
+mod in_memory;
 
 use anyhow::Result;
 
 use async_trait::async_trait;
 pub use aws_parameter_store::AwsParameterStoreProvider;
 pub use aws_secrets_manager::AwsSecretsManagerProvider;
+pub use in_memory::InMemoryProvider;
 
 pub struct ResolvedSecret {
     pub id: String,

@@ -118,6 +118,14 @@ impl EnvParser {
                                         .as_str()
                                         .to_owned(),
                                 ),
+                                Rule::in_memory_directive => ProviderConfig::InMemory(
+                                    inner_directive
+                                        .into_inner()
+                                        .next()
+                                        .expect("should have value")
+                                        .as_str()
+                                        .to_owned(),
+                                ),
                                 _ => unreachable!(),
                             };
 
@@ -279,6 +287,27 @@ mod tests {
                 required: true,
                 default: Some("value1".to_owned()),
                 provider_config: Some(ProviderConfig::AwsParameterStore("foobar/123".to_owned())),
+                ..Default::default()
+            }]
+            .into()
+        )
+    }
+
+    #[test]
+    fn test_parses_in_memory_directive() {
+        let input = r#"
+            # @in-memory foobar/123
+            KEY1=value1
+        "#;
+        let result = EnvParser::parse_variables(input);
+
+        assert_eq!(
+            result.unwrap(),
+            vec![Variable {
+                key: "KEY1".to_owned(),
+                required: true,
+                default: Some("value1".to_owned()),
+                provider_config: Some(ProviderConfig::InMemory("foobar/123".to_owned())),
                 ..Default::default()
             }]
             .into()

@@ -11,7 +11,7 @@ use regex::Regex;
 
 use crate::{
     cli::MergeMode,
-    provider::{AwsParameterStoreProvider, AwsSecretsManagerProvider, Provider},
+    provider::{AwsParameterStoreProvider, AwsSecretsManagerProvider, InMemoryProvider, Provider},
     variable::{ProviderConfig, Variables},
 };
 
@@ -22,6 +22,7 @@ static MARKER: &str = "\u{FFFF}ESCAPED\u{FFFF}";
 enum ProviderKind {
     AwsSecretsManager,
     AwsParameterStore,
+    InMemory,
 }
 
 impl From<&ProviderConfig> for ProviderKind {
@@ -29,17 +30,42 @@ impl From<&ProviderConfig> for ProviderKind {
         match value {
             ProviderConfig::AwsSecretsManager(_) => ProviderKind::AwsSecretsManager,
             ProviderConfig::AwsParameterStore(_) => ProviderKind::AwsParameterStore,
+            ProviderConfig::InMemory(_) => ProviderKind::InMemory,
         }
     }
 }
 
+#[derive(Default)]
 pub struct Resolver {
     providers: HashMap<ProviderKind, Box<dyn Provider>>,
 }
 
 impl Resolver {
+    pub fn new() -> Resolver {
+        Resolver {
+            providers: HashMap::new(),
+        }
+    }
+
+    pub fn with_secrets_manager(&mut self, provider: AwsSecretsManagerProvider) -> &mut Self {
+        self.add_provider(ProviderKind::AwsSecretsManager, provider)
+    }
+
+    pub fn with_parameter_store(&mut self, provider: AwsParameterStoreProvider) -> &mut Self {
+        self.add_provider(ProviderKind::AwsParameterStore, provider)
+    }
+
+    pub fn with_in_memory(&mut self, provider: InMemoryProvider) -> &mut Self {
+        self.add_provider(ProviderKind::InMemory, provider)
+    }
+
+    fn add_provider(&mut self, kind: ProviderKind, provider: impl Provider + 'static) -> &mut Self {
+        self.providers.insert(kind, Box::new(provider));
+        self
+    }
+
     pub async fn required_by(vars: &Variables) -> Resolver {
-        let mut providers: HashMap<ProviderKind, Box<dyn Provider>> = HashMap::new();
+        let mut resolver = Resolver::new();
 
         let kinds = vars
             .iter()
@@ -51,15 +77,18 @@ impl Resolver {
         for kind in kinds {
             match kind {
                 ProviderKind::AwsSecretsManager => {
-                    providers.insert(kind, Box::new(AwsSecretsManagerProvider::new().await));
+                    resolver.with_secrets_manager(AwsSecretsManagerProvider::new().await);
                 }
                 ProviderKind::AwsParameterStore => {
-                    providers.insert(kind, Box::new(AwsParameterStoreProvider::new().await));
+                    resolver.with_parameter_store(AwsParameterStoreProvider::new().await);
+                }
+                ProviderKind::InMemory => {
+                    resolver.with_in_memory(InMemoryProvider::new());
                 }
             }
         }
 
-        Resolver { providers }
+        resolver
     }
 
     pub async fn resolve(
@@ -245,6 +274,276 @@ mod tests {
 
     fn keys(variables: &Variables) -> Vec<&str> {
         variables.iter().map(|v| v.key.as_str()).collect()
+    }
+
+    fn provider_var(key: &str, config: ProviderConfig) -> Variable {
+        Variable {
+            key: key.to_string(),
+            provider_config: Some(config),
+            ..Default::default()
+        }
+    }
+
+    fn in_memory_resolver(secrets: Vec<(&str, &str)>) -> Resolver {
+        let secrets: HashMap<String, String> = secrets
+            .into_iter()
+            .map(|(id, secret)| (id.to_string(), secret.to_string()))
+            .collect();
+
+        let mut resolver = Resolver::new();
+        resolver.with_in_memory(InMemoryProvider::from_secrets(secrets));
+
+        resolver
+    }
+
+    fn placeholders(items: Vec<(&str, &str)>) -> IndexMap<String, String> {
+        items
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_resolve_populates_values_from_provider() {
+        let resolver = in_memory_resolver(vec![("secret/one", "one"), ("secret/two", "two")]);
+        let mut variables = vars(vec![
+            provider_var("FIRST", ProviderConfig::InMemory("secret/one".to_string())),
+            provider_var("SECOND", ProviderConfig::InMemory("secret/two".to_string())),
+        ]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("FIRST").unwrap().value.as_deref(),
+            Some("one")
+        );
+        assert_eq!(
+            variables.find_by_key("SECOND").unwrap().value.as_deref(),
+            Some("two")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_leaves_variables_without_a_provider_untouched() {
+        let resolver = in_memory_resolver(vec![("secret/one", "one")]);
+        let mut variables = vars(vec![
+            var("PLAIN", "plain"),
+            provider_var("FIRST", ProviderConfig::InMemory("secret/one".to_string())),
+        ]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("PLAIN").unwrap().value.as_deref(),
+            Some("plain")
+        );
+        assert_eq!(
+            variables.find_by_key("FIRST").unwrap().value.as_deref(),
+            Some("one")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_substitutes_placeholders_in_ids() {
+        let resolver = in_memory_resolver(vec![("prod/db/password", "hunter2")]);
+        let mut variables = vars(vec![provider_var(
+            "DB_PASSWORD",
+            ProviderConfig::InMemory("$env/db/password".to_string()),
+        )]);
+
+        resolver
+            .resolve(&mut variables, placeholders(vec![("env", "prod")]))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables
+                .find_by_key("DB_PASSWORD")
+                .unwrap()
+                .value
+                .as_deref(),
+            Some("hunter2")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_errors_on_missing_placeholder() {
+        let resolver = in_memory_resolver(vec![("prod/db/password", "hunter2")]);
+        let mut variables = vars(vec![provider_var(
+            "DB_PASSWORD",
+            ProviderConfig::InMemory("$env/db/password".to_string()),
+        )]);
+
+        let result = resolver.resolve(&mut variables, IndexMap::new()).await;
+
+        assert!(result.is_err());
+        assert_eq!(variables.find_by_key("DB_PASSWORD").unwrap().value, None);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_fills_every_variable_sharing_an_id() {
+        let resolver = in_memory_resolver(vec![("secret/shared", "shared")]);
+        let mut variables = vars(vec![
+            provider_var(
+                "FIRST",
+                ProviderConfig::InMemory("secret/shared".to_string()),
+            ),
+            provider_var(
+                "SECOND",
+                ProviderConfig::InMemory("secret/shared".to_string()),
+            ),
+        ]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("FIRST").unwrap().value.as_deref(),
+            Some("shared")
+        );
+        assert_eq!(
+            variables.find_by_key("SECOND").unwrap().value.as_deref(),
+            Some("shared")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_leaves_unknown_ids_unset() {
+        let resolver = in_memory_resolver(vec![("secret/known", "known")]);
+        let mut variables = vars(vec![
+            provider_var(
+                "KNOWN",
+                ProviderConfig::InMemory("secret/known".to_string()),
+            ),
+            provider_var(
+                "UNKNOWN",
+                ProviderConfig::InMemory("secret/missing".to_string()),
+            ),
+        ]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("KNOWN").unwrap().value.as_deref(),
+            Some("known")
+        );
+        assert_eq!(variables.find_by_key("UNKNOWN").unwrap().value, None);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_overwrites_existing_values() {
+        let resolver = in_memory_resolver(vec![("secret/one", "resolved")]);
+        let mut variables = vars(vec![Variable {
+            key: "FIRST".to_string(),
+            value: Some("stale".to_string()),
+            provider_config: Some(ProviderConfig::InMemory("secret/one".to_string())),
+            ..Default::default()
+        }]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("FIRST").unwrap().value.as_deref(),
+            Some("resolved")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_groups_by_provider_kind() {
+        // Two distinct providers, each holding a different secret under the same id.
+        let mut resolver = Resolver::new();
+        resolver
+            .with_in_memory(InMemoryProvider::from_secrets(HashMap::from([(
+                "shared/id".to_string(),
+                "from-memory".to_string(),
+            )])))
+            // The public setters are typed to their real providers, so reach for the
+            // private pairing to stand a fake in for Secrets Manager.
+            .add_provider(
+                ProviderKind::AwsSecretsManager,
+                InMemoryProvider::from_secrets(HashMap::from([(
+                    "shared/id".to_string(),
+                    "from-secrets-manager".to_string(),
+                )])),
+            );
+
+        let mut variables = vars(vec![
+            provider_var("MEM", ProviderConfig::InMemory("shared/id".to_string())),
+            provider_var(
+                "SM",
+                ProviderConfig::AwsSecretsManager("shared/id".to_string()),
+            ),
+        ]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("MEM").unwrap().value.as_deref(),
+            Some("from-memory")
+        );
+        assert_eq!(
+            variables.find_by_key("SM").unwrap().value.as_deref(),
+            Some("from-secrets-manager")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_with_no_provider_backed_variables_is_a_noop() {
+        let resolver = in_memory_resolver(vec![("secret/one", "one")]);
+        let mut variables = base();
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(variables, base());
+    }
+
+    #[tokio::test]
+    async fn test_resolves_multiple_vars_with_same_id() {
+        let mut resolver = Resolver::new();
+
+        resolver.with_in_memory(InMemoryProvider::from_secrets(HashMap::from([(
+            "shared/id".to_string(),
+            "foo".to_string(),
+        )])));
+
+        let mut variables = vars(vec![
+            provider_var("VAR1", ProviderConfig::InMemory("shared/id".to_string())),
+            provider_var("VAR2", ProviderConfig::InMemory("shared/id".to_string())),
+        ]);
+
+        resolver
+            .resolve(&mut variables, IndexMap::new())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            variables.find_by_key("VAR1").unwrap().value.as_deref(),
+            Some("foo")
+        );
+        assert_eq!(
+            variables.find_by_key("VAR2").unwrap().value.as_deref(),
+            Some("foo")
+        );
     }
 
     #[test]
