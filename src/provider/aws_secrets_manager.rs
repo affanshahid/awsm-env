@@ -1,5 +1,6 @@
 use crate::provider::{Provider, ResolvedSecret};
 use anyhow::{Result, anyhow};
+use async_trait::async_trait;
 use itertools::Itertools;
 
 /// Fetches secrets from AWS Secrets Manager
@@ -16,6 +17,7 @@ impl AwsSecretsManagerProvider {
     }
 }
 
+#[async_trait(?Send)]
 impl Provider for AwsSecretsManagerProvider {
     // All the expects are because the AWS SDK isn't idiomatic
     async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret>> {

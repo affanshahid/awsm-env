@@ -1,4 +1,8 @@
-use std::sync::OnceLock;
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    sync::OnceLock,
+};
 
 use anyhow::{Error, Result, anyhow};
 use indexmap::IndexMap;
@@ -29,43 +33,70 @@ impl From<&ProviderConfig> for ProviderKind {
     }
 }
 
-pub async fn resolve(
-    variables: &mut Variables,
-    placeholders: IndexMap<String, String>,
-) -> Result<()> {
-    let groups = variables
-        .iter_mut()
-        .into_group_map_by(|v| v.provider_config.as_ref().map(ProviderKind::from));
+pub struct Resolver {
+    providers: HashMap<ProviderKind, Box<dyn Provider>>,
+}
 
-    let aws_sm = AwsSecretsManagerProvider::new().await;
-    let aws_ps = AwsParameterStoreProvider::new().await;
+impl Resolver {
+    pub async fn required_by(vars: &Variables) -> Resolver {
+        let mut providers: HashMap<ProviderKind, Box<dyn Provider>> = HashMap::new();
 
-    for (kind, mut group) in groups {
-        let provider_kind = match kind {
-            Some(k) => k,
-            None => continue,
-        };
-
-        let ids = group
+        let kinds = vars
             .iter()
-            .map(|v| {
-                v.provider_config
-                    .as_ref()
-                    .expect("Expected nones to be filtered out")
-                    .id()
-            })
-            .map(|id| replace_placeholders(id, &placeholders))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|v| v.provider_config.iter())
+            .flatten()
+            .map(ProviderKind::from)
+            .collect::<HashSet<_>>();
 
-        let resolved = match provider_kind {
-            ProviderKind::AwsSecretsManager => aws_sm.provide_secrets(ids).await?,
-            ProviderKind::AwsParameterStore => aws_ps.provide_secrets(ids).await?,
-        };
+        for kind in kinds {
+            match kind {
+                ProviderKind::AwsSecretsManager => {
+                    providers.insert(kind, Box::new(AwsSecretsManagerProvider::new().await));
+                }
+                ProviderKind::AwsParameterStore => {
+                    providers.insert(kind, Box::new(AwsParameterStoreProvider::new().await));
+                }
+            }
+        }
 
-        for secret in resolved {
-            let var = group
-                .iter_mut()
-                .find(|v| {
+        Resolver { providers }
+    }
+
+    pub async fn resolve(
+        &self,
+        variables: &mut Variables,
+        placeholders: IndexMap<String, String>,
+    ) -> Result<()> {
+        let groups = variables
+            .iter_mut()
+            .into_group_map_by(|v| v.provider_config.as_ref().map(ProviderKind::from));
+
+        for (kind, mut group) in groups {
+            let provider_kind = match kind {
+                Some(k) => k,
+                None => continue,
+            };
+
+            let ids = group
+                .iter()
+                .map(|v| {
+                    v.provider_config
+                        .as_ref()
+                        .expect("Expected nones to be filtered out")
+                        .id()
+                })
+                .map(|id| replace_placeholders(id, &placeholders))
+                .collect::<Result<Vec<_>>>()?;
+
+            let resolved = self
+                .providers
+                .get(&provider_kind)
+                .expect("Provider should be registered")
+                .provide_secrets(ids)
+                .await?;
+
+            for secret in resolved {
+                let vars = group.iter_mut().filter(|v| {
                     replace_placeholders(
                         v.provider_config
                             .as_ref()
@@ -75,14 +106,16 @@ pub async fn resolve(
                     )
                     .expect("Placholder substitution succeeded earlier")
                         == secret.id
-                })
-                .expect("Expected matching variable");
+                });
 
-            var.value = Some(secret.secret);
+                for var in vars {
+                    var.value = Some(secret.secret.clone());
+                }
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
 
 pub fn merge(mut variables: Variables, mut others: Variables, mode: MergeMode) -> Variables {

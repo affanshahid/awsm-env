@@ -1,6 +1,7 @@
 use crate::provider::{Provider, ResolvedSecret};
 
 use anyhow::Result;
+use async_trait::async_trait;
 use itertools::Itertools;
 
 pub struct AwsParameterStoreProvider {
@@ -16,6 +17,7 @@ impl AwsParameterStoreProvider {
     }
 }
 
+#[async_trait(?Send)]
 impl Provider for AwsParameterStoreProvider {
     // All the expects are because the AWS SDK isn't idiomatic
     async fn provide_secrets(&self, ids: Vec<String>) -> Result<Vec<ResolvedSecret>> {

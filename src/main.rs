@@ -9,7 +9,7 @@ use awsm_env::{
     cli::{Args, Format},
     output::{ClaudeOutput, CodexOutput, EnvOutput, JsonOutput, Output, ShellOutput},
     parser::EnvParser,
-    resolve::{merge, resolve},
+    resolver::{Resolver, merge},
 };
 use clap::Parser;
 
@@ -27,7 +27,10 @@ async fn main() -> Result<()> {
         variables.iter_mut().for_each(|var| var.drop_default());
     }
 
-    resolve(&mut variables, placeholders)
+    let resolver = Resolver::required_by(&variables).await;
+
+    resolver
+        .resolve(&mut variables, placeholders)
         .await
         .context("Failed to fetch secrets")?;
 
